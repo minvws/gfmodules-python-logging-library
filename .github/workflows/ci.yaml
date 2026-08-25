@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - v*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run build action
+        uses: minvws/action-python-poetry-install@v1
+        with:
+          python_version: "3.14"
+
+      - name: Check the lock file matches pyproject.toml
+        run: poetry check --lock
+
+  lint:
+    name: Run code linter
+    runs-on: ubuntu-24.04
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run build action
+        uses: minvws/action-python-poetry-install@v1
+        with:
+          python_version: "3.14"
+
+      - name: Lint
+        run: make POETRY=true lint
+
+  type-check:
+    name: Check static types
+    runs-on: ubuntu-24.04
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run build action
+        uses: minvws/action-python-poetry-install@v1
+        with:
+          python_version: "3.14"
+
+      - name: Check static types
+        run: make POETRY=true type-check
+
+  safety-check:
+    name: Scan packages for vulnerabilities
+    runs-on: ubuntu-24.04
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run build action
+        uses: minvws/action-python-poetry-install@v1
+        with:
+          python_version: "3.14"
+
+      - name: Scan packages for vulnerabilities
+        run: make POETRY=true safety-check
+
+  spelling-check:
+    name: Run spelling check
+    runs-on: ubuntu-24.04
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run build action
+        uses: minvws/action-python-poetry-install@v1
+        with:
+          python_version: "3.14"
+
+      - uses: codespell-project/codespell-problem-matcher@v1
+
+      - name: Run spelling check
+        run: make POETRY=true spelling-check
+
+  test:
+    name: Run the tests (Python ${{ matrix.python_version }})
+    runs-on: ubuntu-24.04
+    needs: build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python_version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run build action
+        uses: minvws/action-python-poetry-install@v1
+        with:
+          python_version: ${{ matrix.python_version }}
+
+      - name: Run the tests
+        run: make POETRY=true test
+
+      - name: Upload coverage report
+        if: matrix.python_version == '3.14'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage.xml
+
+  install-without-extras:
+    name: Import without the fastapi extra
+    runs-on: ubuntu-24.04
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install the package without extras
+        run: pip install .
+
+      - name: Import the package
+        run: python -c "import gfmodules.logging"
+
+  reuse:
+    name: Check licensing compliance
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run REUSE compliance check
+        uses: fsfe/reuse-action@v6
+
+  tag-version:
+    name: Check the tag matches the package version
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Compare the tag against pyproject.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match pyproject.toml version $version" >&2
+            exit 1
+          fi
+
+  sonar:
+    name: SonarCloud
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Download coverage report
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage
+      - name: Run SonarQube scan
+        uses: minvws/action-sonarqube@v1
+        with:
+          sonar-token: ${{ secrets.SONAR_TOKEN }}

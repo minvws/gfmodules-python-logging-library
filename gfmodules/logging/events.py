@@ -1,0 +1,234 @@
+"""Event definitions and the emit helper.
+
+The required slots are annotation-only ``ClassVar``s, so a type checker will not
+reject a subclass that leaves one unfilled. :func:`validate_catalogue` is the
+guard instead.
+"""
+
+import logging
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
+from typing import Any, ClassVar
+
+from gfmodules.logging.context import ALWAYS_KEEP_FIELDS
+from gfmodules.logging.loggers import report_outside_root, within_root
+from gfmodules.logging.streams import LoggingStreams
+
+#: Spelled out rather than read off the running interpreter
+#: stdblib differs across Python versions, and we want a stable set of reserved names.
+_STDLIB_RECORD_FIELDS: frozenset[str] = frozenset(
+    {
+        "args",
+        "created",
+        "exc_info",
+        "exc_text",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "module",
+        "msecs",
+        "msg",
+        "name",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "taskName",
+        "thread",
+        "threadName",
+    }
+)
+
+#: Field names a record cannot carry: the standard library refuses to overwrite
+#: its own ``LogRecord`` attributes, and the last three are this library's.
+RESERVED_FIELDS: frozenset[str] = _STDLIB_RECORD_FIELDS | {
+    "message",
+    "asctime",
+    "event_id",
+    "stream",
+    "field_streams",
+}
+
+
+@dataclass(frozen=True)
+class LogEvent:
+    """A single loggable event from the logging spec.
+
+    An empty ``fields`` means no per-field routing at all, so every field
+    reaches every stream in ``streams``.
+    """
+
+    event_id: str
+    level: int
+    streams: tuple[LoggingStreams, ...]
+    fields: Mapping[LoggingStreams, tuple[str, ...]] = field(default_factory=dict)
+
+
+#: The events the library emits on the application's behalf, so every catalogue must fill them.
+REQUIRED_EVENTS: tuple[str, ...] = (
+    "SYS_APP_STARTED",
+    "SYS_APP_STOPPED",
+    "SYS_APP_CRASHED",
+    "SYS_UNHANDLED_EXCEPTION",
+    "SYS_MISSING_CORRELATION_ID",
+    "ACCESS_REQUEST",
+)
+
+_strict_fields = False
+
+
+def set_strict_fields(enabled: bool) -> None:
+    """Make :func:`emit` reject fields no declared stream will carry.
+
+    Off by default: a typo should not take a request down in production.
+    """
+    global _strict_fields
+    _strict_fields = enabled
+
+
+def unrouted_fields(event: LogEvent, names: Iterable[str]) -> tuple[str, ...]:
+    if not event.fields:
+        return ()
+    allowed = {name for allow_list in event.fields.values() for name in allow_list} | ALWAYS_KEEP_FIELDS
+    return tuple(sorted(set(names) - allowed))
+
+
+def emit(
+    logger: logging.Logger,
+    event: LogEvent,
+    message: str,
+    *,
+    event_id: str | None = None,
+    exc_info: Any = None,
+    stacklevel: int = 1,
+    **fields: Any,
+) -> None:
+    """``stacklevel`` follows the stdlib convention: 1 reports this function's
+    caller, and a helper wrapping ``emit`` passes 2 to point past itself.
+    """
+    if _strict_fields:
+        unrouted = unrouted_fields(event, fields)
+        if unrouted:
+            raise ValueError(f"event {event.event_id} routes none of these fields to any stream: {', '.join(unrouted)}")
+
+    if event.streams and not within_root(logger.name):
+        report_outside_root(logger.name)
+
+    extra: dict[str, Any] = {
+        "event_id": event_id if event_id else event.event_id,
+        "stream": list(event.streams),
+    }
+    if event.fields:
+        extra["field_streams"] = event.fields
+    extra.update(fields)
+    logger.log(event.level, message, extra=extra, exc_info=exc_info, stacklevel=stacklevel + 1)
+
+
+class EventCatalogue:
+    SYS_APP_STARTED: ClassVar[LogEvent]
+    SYS_APP_STOPPED: ClassVar[LogEvent]
+    SYS_APP_CRASHED: ClassVar[LogEvent]
+    SYS_UNHANDLED_EXCEPTION: ClassVar[LogEvent]
+    SYS_MISSING_CORRELATION_ID: ClassVar[LogEvent]
+    ACCESS_REQUEST: ClassVar[LogEvent]
+
+    #: (method, route path) -> event id, for routes with an access id of their own.
+    access_event_id: ClassVar[Mapping[tuple[str, str], str]] = {}
+
+    @classmethod
+    def event(
+        cls,
+        logger: logging.Logger,
+        event: LogEvent,
+        message: str,
+        *,
+        event_id: str | None = None,
+        exc_info: Any = None,
+        stacklevel: int = 1,
+        **fields: Any,
+    ) -> None:
+        emit(
+            logger,
+            event,
+            message,
+            event_id=event_id,
+            exc_info=exc_info,
+            stacklevel=stacklevel + 1,
+            **fields,
+        )
+
+
+def missing_events(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
+    return tuple(name for name in REQUIRED_EVENTS if not isinstance(getattr(catalogue, name, None), LogEvent))
+
+
+_APP = LoggingStreams.APP
+_SIEM = LoggingStreams.SIEM
+
+
+class DefaultEventCatalogue(EventCatalogue):
+    """The system events pre-filled, so an application declares only its own."""
+
+    SYS_APP_STARTED = LogEvent("100601", logging.INFO, (_APP,), {_APP: ("version", "config_path")})
+    SYS_APP_STOPPED = LogEvent(
+        "100602",
+        logging.INFO,
+        (_APP, _SIEM),
+        {_APP: ("shutdown_reason", "last_exception_type"), _SIEM: ("shutdown_reason",)},
+    )
+    SYS_APP_CRASHED = LogEvent(
+        "100602",
+        logging.CRITICAL,
+        (_APP, _SIEM),
+        {_APP: ("shutdown_reason", "last_exception_type"), _SIEM: ("shutdown_reason",)},
+    )
+    SYS_UNHANDLED_EXCEPTION = LogEvent(
+        "100604",
+        logging.ERROR,
+        (_APP, _SIEM),
+        {_APP: ("exception_type", "endpoint", "method"), _SIEM: ("exception_type", "endpoint", "method")},
+    )
+    SYS_MISSING_CORRELATION_ID = LogEvent("100606", logging.ERROR, (_APP,), {_APP: ("endpoint", "method")})
+    ACCESS_REQUEST = LogEvent(
+        "094500",
+        logging.INFO,
+        (_APP,),
+        {_APP: ("endpoint", "method", "status_code", "duration_ms", "body", "body_truncated")},
+    )
+
+
+def declared_events(catalogue: type[EventCatalogue]) -> Iterator[tuple[str, LogEvent]]:
+    """Every event the catalogue defines, in declaration order, subclass first."""
+    seen: set[str] = set()
+    for klass in catalogue.__mro__:
+        for name, value in vars(klass).items():
+            if name not in seen and isinstance(value, LogEvent):
+                seen.add(name)
+                yield name, value
+
+
+def reserved_field_names(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
+    """The standard library raises at log time for these, so a rarely taken
+    branch would otherwise take the process down long after the catalogue was
+    written.
+    """
+    return tuple(
+        f"{name}.{field_name}"
+        for name, event in declared_events(catalogue)
+        for allow_list in event.fields.values()
+        for field_name in allow_list
+        if field_name in RESERVED_FIELDS
+    )
+
+
+def validate_catalogue(catalogue: type[EventCatalogue]) -> None:
+    missing = missing_events(catalogue)
+    if missing:
+        raise ValueError(f"{catalogue.__name__} does not define required events: {', '.join(missing)}")
+
+    reserved = reserved_field_names(catalogue)
+    if reserved:
+        raise ValueError(f"{catalogue.__name__} declares fields a log record reserves: {', '.join(reserved)}")
