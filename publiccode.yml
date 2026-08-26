@@ -1,0 +1,68 @@
+publiccodeYmlVersion: "0.5"
+name: GFModules Python Logging Library
+url: https://github.com/minvws/gfmodules-python-logging-library
+platforms:
+  - linux
+categories:
+  - application-development
+developmentStatus: development
+softwareType: library
+intendedAudience:
+  countries:
+    - NL
+  scope:
+    - government
+    - healthcare
+
+description:
+  nl:
+    shortDescription: >-
+      Gedeelde logging-opzet voor GFModules Python-applicaties, met
+      gestructureerde JSON-records en routering per logstroom.
+    longDescription: |
+      Deze library maakt deel uit van het project "Generieke functies,
+      lokalisatie en adressering" van het Ministerie van Volksgezondheid,
+      Welzijn en Sport. Een applicatie declareert haar eigen gebeurtenissen in
+      een catalogus, de library verzorgt de rest: gestructureerde
+      JSON-records, een lijst met toegestane velden per logstroom, middleware die de
+      requestcontext aan elk record hangt, en de gebeurtenissen rond de
+      levenscyclus van de applicatie.
+    features:
+      - Gestructureerde JSON-logging met een vaste recordindeling
+      - Veld-allowlist per logstroom, zodat applicatiedetails niet in SIEM belanden
+      - Requestcontext en correlatie-headers per request
+  en:
+    shortDescription: >-
+      Shared logging setup for GFModules Python applications, with structured
+      JSON records and per-stream field routing.
+    longDescription: |
+      This library is part of the "Generic Functions, Localization and
+      Addressing" project of the Ministry of Health, Welfare and Sport. An
+      application declares its own events in a catalogue and the library
+      handles the rest: structured JSON records, a per-stream field allow-list,
+      middleware that attaches the request context to every record, and the
+      application lifecycle events.
+    features:
+      - Structured JSON logging with a fixed record format
+      - Per-stream field allow-list that keeps application detail out of SIEM
+      - Request context and correlation headers on every request
+
+legal:
+  license: EUPL-1.2
+  mainCopyrightOwner: Ministerie van Volksgezondheid, Welzijn en Sport
+
+maintenance:
+  type: internal
+  contacts:
+    - name: iRealisatie - Team Generieke Functies
+      email: maintainer@irealisatie.nl
+      affiliation: Ministerie van Volksgezondheid, Welzijn en Sport
+
+organisation:
+  uri: https://www.rijksoverheid.nl/ministeries/ministerie-van-volksgezondheid-welzijn-en-sport
+  name: Ministerie van Volksgezondheid, Welzijn en Sport
+
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - en
