@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from gfmodules.logging.config import ConfigLogging
@@ -5,6 +6,11 @@ from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter, PlainTextFormatter
 from gfmodules.logging.loggers import active_logger_root
 from gfmodules.logging.streams import LoggingStreams
+
+
+def _at_least(loglevel: str, floor: int) -> str:
+    numeric = logging.getLevelNamesMapping().get(loglevel.upper())
+    return loglevel if numeric is not None and numeric >= floor else logging.getLevelName(floor)
 
 
 class LogConfigBuilder:
@@ -117,6 +123,12 @@ class LogConfigBuilder:
                     "handlers": [],
                     "level": "CRITICAL",
                     "propagate": False,
+                },
+                # Floored rather than silenced, and left propagating
+                # Would leak otherwise as inject logs every binding at DEBUG level
+                "inject": {
+                    "level": _at_least(self.loglevel, logging.INFO),
+                    "propagate": True,
                 },
             },
             "root": {"handlers": ["console"], "level": self.loglevel},
