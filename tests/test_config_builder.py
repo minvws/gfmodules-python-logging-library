@@ -2,6 +2,8 @@ import json
 import logging
 from typing import Any
 
+import pytest
+
 from gfmodules.logging.config import ConfigLogging
 from gfmodules.logging.config_builder import LogConfigBuilder
 from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
@@ -101,6 +103,7 @@ EXPECTED_SYSLOG_DOCUMENT: dict[str, Any] = {
             "propagate": False,
         },
         "uvicorn.access": {"handlers": [], "level": "CRITICAL", "propagate": False},
+        "inject": {"level": "INFO", "propagate": True},
     },
     "root": {"handlers": ["console", "syslog_debug"], "level": "INFO"},
 }
@@ -206,6 +209,21 @@ class TestLoggers:
 
     def test_existing_loggers_are_left_enabled(self) -> None:
         assert build(ConfigLogging())["disable_existing_loggers"] is False
+
+
+class TestInjectIsFloored:
+    @pytest.mark.parametrize("loglevel", ["DEBUG", "NOTSET", "NONSENSE"])
+    def test_it_never_runs_below_info_however_verbose_the_application_is(self, loglevel: str) -> None:
+        assert build(ConfigLogging(), loglevel=loglevel)["loggers"]["inject"]["level"] == "INFO"
+
+    def test_an_application_quieter_than_the_floor_is_left_alone(self) -> None:
+        assert build(ConfigLogging(), loglevel="ERROR")["loggers"]["inject"]["level"] == "ERROR"
+
+    def test_what_survives_the_floor_still_reaches_the_debug_stream(self) -> None:
+        logger = build(ConfigLogging(syslog_path=SYSLOG))["loggers"]["inject"]
+
+        assert logger["propagate"] is True
+        assert "handlers" not in logger
 
 
 class TestApplicationIdStamping:
