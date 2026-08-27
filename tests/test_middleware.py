@@ -101,6 +101,11 @@ class TestContextBinding:
     def test_omits_correlation_headers_that_were_not_sent(self, client: TestClient) -> None:
         assert "correlation_id" not in client.get("/context").json()
 
+    def test_binds_the_user_agent_as_the_caller_sent_it(self, client: TestClient) -> None:
+        body = client.get("/context", headers={"User-Agent": "kube-probe/1.31"}).json()
+
+        assert body["user_agent"] == "kube-probe/1.31"
+
     def test_binds_application_declared_extra_fields(self, catalogue: type[CompleteCatalogue]) -> None:
         register_context_fields((ContextField(name="tenant_id", header="X-Tenant-Id"),))
         client = build_client()

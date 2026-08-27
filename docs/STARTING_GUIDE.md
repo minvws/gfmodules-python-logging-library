@@ -5,9 +5,11 @@ For a complete working example, see [examples/](../examples/).
 
 ## 1. Declare the application's events
 
-Subclass `DefaultEventCatalogue`, which fills the system slots the library emits
-on the application's behalf, and declare the application's own events alongside
-them:
+Subclass `DefaultEventCatalogue`, which carries the routing for the system events
+the library emits on the application's behalf: their level, streams and per-stream
+field allow-lists. **It carries no event ids.** Numbering differs per system, so
+each application supplies its own with `with_id`, and declares its own events
+alongside:
 
 ```python
 import logging
@@ -16,10 +18,17 @@ from gfmodules.logging import DefaultEventCatalogue, LogEvent, LoggingStreams
 APP = LoggingStreams.APP
 SIEM = LoggingStreams.SIEM
 
+Base = DefaultEventCatalogue
 
-class Log(DefaultEventCatalogue):
-    # Any system slot can be overridden one at a time.
-    SYS_MISSING_CORRELATION_ID = LogEvent("100606", logging.ERROR, (APP,), {APP: ("endpoint", "method")})
+
+class Log(Base):
+    # The system events: this system's ids, the library's routing.
+    SYS_APP_STARTED = Base.SYS_APP_STARTED.with_id("100601")
+    SYS_APP_STOPPED = Base.SYS_APP_STOPPED.with_id("100602")
+    SYS_APP_CRASHED = Base.SYS_APP_CRASHED.with_id("100602")
+    SYS_UNHANDLED_EXCEPTION = Base.SYS_UNHANDLED_EXCEPTION.with_id("100604")
+    SYS_MISSING_CORRELATION_ID = Base.SYS_MISSING_CORRELATION_ID.with_id("100606")
+    ACCESS_REQUEST = Base.ACCESS_REQUEST.with_id("094500")
 
     # This application's own events.
     RESOURCE_CREATED = LogEvent(
@@ -33,13 +42,38 @@ class Log(DefaultEventCatalogue):
     access_event_id = {("POST", "/resources"): "100700"}
 ```
 
-Subclass `EventCatalogue` instead where every system event needs an id of its
-own; then all of `REQUIRED_EVENTS` has to be filled in.
+Where the routing differs too, `replace` changes any combination of the four
+attributes and keeps the rest:
+
+```python
+class Log(Base):
+    SYS_MISSING_CORRELATION_ID = Base.SYS_MISSING_CORRELATION_ID.replace(
+        event_id="100606",
+        level=logging.WARNING,
+        streams=(APP, SIEM),
+        fields={APP: ("endpoint", "method"), SIEM: ("endpoint", "method")},
+    )
+```
+
+`with_id` is `replace(event_id=...)` under a shorter name. Both return a new
+event, so the inherited one is never mutated. Restating a whole `LogEvent` still
+works, but then the routing is a copy: a later change to the library's routing
+will not reach it.
+
+An id left unset fails in `configure()`, naming the slots:
+
+```text
+ValueError: Log declares events with no event id: ACCESS_REQUEST, SYS_APP_STARTED. ...
+```
+
+Subclass `EventCatalogue` instead to start from nothing, declaring routing as
+well as ids for all of `REQUIRED_EVENTS`.
 
 `fields` is a **per-stream allow-list**. A field not listed for a stream never
 reaches it, which is what keeps application detail out of SIEM. Correlation
-metadata (`request_id`, `ip`, `client_trace_id`, `correlation_id`) is always
-retained. An event with no `fields` sends everything to every stream it declares.
+metadata (`request_id`, `ip`, `user_agent`, `client_trace_id`, `correlation_id`)
+is always retained. An event with no `fields` sends everything to every stream it
+declares.
 
 Field names in `RESERVED_FIELDS` cannot be used: the standard library refuses to
 overwrite its own `LogRecord` attributes, so `name`, `module`, `lineno` and the
@@ -53,11 +87,11 @@ class Log(EventCatalogue):
     SCHEMA_MISMATCH = VALIDATION_FAILED
 ```
 
-`DefaultEventCatalogue` does this itself: `SYS_APP_STOPPED` and
-`SYS_APP_CRASHED` are both `100602`, because the spec has no separate id for a
-crash. They are told apart by level, `CRITICAL` against `INFO`, and by
-`shutdown_reason`. A log server splitting purely on `event_id` will not separate
-them, so override the slot if yours needs a dedicated id.
+The example above does this by giving `SYS_APP_STOPPED` and `SYS_APP_CRASHED` the
+same `100602`, because that spec has no separate id for a crash. They are told
+apart by level, `CRITICAL` against `INFO`, and by `shutdown_reason`. A log server
+splitting purely on `event_id` will not separate them, so give the crash an id of
+its own where yours needs one.
 
 ## 2. Configure at startup
 
@@ -153,8 +187,8 @@ app.add_middleware(
 ```
 
 Every event logged while a request is being handled picks up the request id,
-client ip, endpoint, method and correlation metadata automatically, so call sites
-never pass them.
+client ip, user agent, endpoint, method and correlation metadata automatically,
+so call sites never pass them explicitly.
 
 **Request bodies are not logged unless you ask.** A body is the likeliest place
 for the data an application least wants in its logs, and the console handler

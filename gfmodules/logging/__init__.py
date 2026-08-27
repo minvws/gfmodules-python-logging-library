@@ -25,6 +25,7 @@ from gfmodules.logging.context import (
 from gfmodules.logging.events import (
     REQUIRED_EVENTS,
     RESERVED_FIELDS,
+    UNSET_EVENT_ID,
     DefaultEventCatalogue,
     EventCatalogue,
     LogEvent,
@@ -33,6 +34,7 @@ from gfmodules.logging.events import (
     missing_events,
     reserved_field_names,
     set_strict_fields,
+    unset_event_ids,
     validate_catalogue,
 )
 from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
@@ -66,6 +68,7 @@ __all__ = [
     "REQUIRED_EVENTS",
     "RESERVED_FIELDS",
     "UNSET",
+    "UNSET_EVENT_ID",
     "AppFilter",
     "ConfigLogging",
     "ContextField",
@@ -97,6 +100,7 @@ __all__ = [
     "reserved_field_names",
     "set_strict_fields",
     "shutdown_reason",
+    "unset_event_ids",
     "update_context",
     "validate_catalogue",
 ]

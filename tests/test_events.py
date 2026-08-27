@@ -7,14 +7,17 @@ from gfmodules.logging.events import (
     _STDLIB_RECORD_FIELDS,
     REQUIRED_EVENTS,
     RESERVED_FIELDS,
+    UNSET_EVENT_ID,
     DefaultEventCatalogue,
     EventCatalogue,
     LogEvent,
+    declared_events,
     emit,
     missing_events,
     reserved_field_names,
     set_strict_fields,
     unrouted_fields,
+    unset_event_ids,
     validate_catalogue,
 )
 from gfmodules.logging.streams import LoggingStreams
@@ -217,20 +220,95 @@ class TestReservedFieldNames:
         assert "taskName" in _STDLIB_RECORD_FIELDS
 
 
+class SystemIdsFilled(DefaultEventCatalogue):
+    SYS_APP_STARTED = DefaultEventCatalogue.SYS_APP_STARTED.with_id("100801")
+    SYS_APP_STOPPED = DefaultEventCatalogue.SYS_APP_STOPPED.with_id("100802")
+    SYS_APP_CRASHED = DefaultEventCatalogue.SYS_APP_CRASHED.with_id("100803")
+    SYS_UNHANDLED_EXCEPTION = DefaultEventCatalogue.SYS_UNHANDLED_EXCEPTION.with_id("100804")
+    SYS_MISSING_CORRELATION_ID = DefaultEventCatalogue.SYS_MISSING_CORRELATION_ID.with_id("100806")
+    ACCESS_REQUEST = DefaultEventCatalogue.ACCESS_REQUEST.with_id("094500")
+
+
+class TestLogEventCopies:
+    def test_with_id_keeps_everything_else(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STARTED.with_id("100801")
+
+        assert event.event_id == "100801"
+        assert event.level == DefaultEventCatalogue.SYS_APP_STARTED.level
+        assert event.streams == DefaultEventCatalogue.SYS_APP_STARTED.streams
+        assert event.fields == DefaultEventCatalogue.SYS_APP_STARTED.fields
+
+    def test_the_original_is_left_alone(self) -> None:
+        DefaultEventCatalogue.SYS_APP_STARTED.with_id("100801")
+
+        assert DefaultEventCatalogue.SYS_APP_STARTED.event_id == UNSET_EVENT_ID
+
+    def test_replace_changes_every_attribute_at_once(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STOPPED.replace(
+            event_id="100802",
+            level=logging.WARNING,
+            streams=(LoggingStreams.APP,),
+            fields={LoggingStreams.APP: ("shutdown_reason",)},
+        )
+
+        assert event.event_id == "100802"
+        assert event.level == logging.WARNING
+        assert event.streams == (LoggingStreams.APP,)
+        assert event.fields == {LoggingStreams.APP: ("shutdown_reason",)}
+
+    def test_replace_leaves_out_what_it_is_not_given(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STOPPED.replace(level=logging.WARNING)
+
+        assert event.level == logging.WARNING
+        assert event.streams == DefaultEventCatalogue.SYS_APP_STOPPED.streams
+        assert event.fields == DefaultEventCatalogue.SYS_APP_STOPPED.fields
+
+    def test_empty_fields_clears_the_routing_rather_than_meaning_unset(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STOPPED.replace(fields={})
+
+        assert event.fields == {}
+
+
+class TestUnsetEventIds:
+    def test_the_default_catalogue_supplies_no_ids(self) -> None:
+        assert unset_event_ids(DefaultEventCatalogue) == tuple(sorted(REQUIRED_EVENTS))
+
+    def test_validate_rejects_a_catalogue_that_leaves_one_unfilled(self) -> None:
+        class Log(DefaultEventCatalogue):
+            SYS_APP_STARTED = DefaultEventCatalogue.SYS_APP_STARTED.with_id("100801")
+
+        with pytest.raises(ValueError, match="ACCESS_REQUEST"):
+            validate_catalogue(Log)
+
+    def test_the_error_points_at_the_way_out(self) -> None:
+        with pytest.raises(ValueError, match="declares events with no event id"):
+            validate_catalogue(DefaultEventCatalogue)
+
+    def test_an_unfilled_id_on_an_applications_own_event_is_caught_too(self) -> None:
+        class Log(SystemIdsFilled):
+            RESOURCE_CREATED = LogEvent(UNSET_EVENT_ID, logging.INFO, (LoggingStreams.APP,))
+
+        assert unset_event_ids(Log) == ("RESOURCE_CREATED",)
+
+    def test_a_catalogue_with_every_id_filled_passes(self) -> None:
+        validate_catalogue(SystemIdsFilled)
+
+
 class TestDefaultEventCatalogue:
     def test_fills_every_required_slot(self) -> None:
         assert missing_events(DefaultEventCatalogue) == ()
 
-    def test_passes_validation_unchanged(self) -> None:
-        validate_catalogue(DefaultEventCatalogue)
-
     def test_an_application_overrides_only_what_differs(self) -> None:
-        class Log(DefaultEventCatalogue):
+        class Log(SystemIdsFilled):
             SYS_APP_STARTED = LogEvent("900001", logging.INFO, (LoggingStreams.APP,))
 
         assert Log.SYS_APP_STARTED.event_id == "900001"
-        assert Log.ACCESS_REQUEST.event_id == DefaultEventCatalogue.ACCESS_REQUEST.event_id
+        assert Log.SYS_APP_STARTED.fields == {}
+        assert Log.ACCESS_REQUEST.fields == DefaultEventCatalogue.ACCESS_REQUEST.fields
         assert missing_events(Log) == ()
+
+    def test_declares_only_the_events_the_library_emits(self) -> None:
+        assert {name for name, _ in declared_events(DefaultEventCatalogue)} == set(REQUIRED_EVENTS)
 
     def test_siem_is_allow_listed_on_every_event_that_reaches_it(self) -> None:
         for name, event in ((n, e) for n, e in vars(DefaultEventCatalogue).items() if isinstance(e, LogEvent)):

@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from gfmodules.logging.events import emit
+from gfmodules.logging.events import DefaultEventCatalogue, emit
 from gfmodules.logging.streams import LoggingStreams
 from gfmodules.logging.testing import (
     assert_catalogue_complete,
@@ -196,6 +196,10 @@ class TestAssertCatalogueComplete:
     def test_names_the_missing_events(self) -> None:
         with pytest.raises(AssertionError, match="SYS_UNHANDLED_EXCEPTION"):
             assert_catalogue_complete(IncompleteCatalogue)
+
+    def test_names_the_slots_inheriting_routing_without_an_id(self) -> None:
+        with pytest.raises(AssertionError, match="SYS_APP_STARTED"):
+            assert_catalogue_complete(DefaultEventCatalogue)
 
 
 class TestAssertFieldsAbsent:

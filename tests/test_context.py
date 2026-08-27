@@ -6,6 +6,7 @@ from gfmodules.logging.context import (
     CORRELATION_ID_HEADER,
     STANDARD_FIELDS,
     UNSET,
+    USER_AGENT_HEADER,
     ContextField,
     bind_context,
     collect_context,
@@ -13,6 +14,7 @@ from gfmodules.logging.context import (
     extract_context,
     register_context_fields,
     registered_fields,
+    sanitize_free_text,
     sanitize_header_value,
     update_context,
 )
@@ -149,6 +151,16 @@ class TestExtractContext:
     def test_uses_unset_for_headers_that_are_absent(self) -> None:
         assert extract_context({})["correlation_id"] == UNSET
 
+    def test_reads_the_user_agent_without_mangling_it(self) -> None:
+        headers = {USER_AGENT_HEADER: "Mozilla/5.0 (X11; Linux x86_64)"}
+
+        assert extract_context(headers)["user_agent"] == "Mozilla/5.0 (X11; Linux x86_64)"
+
+    def test_a_user_agent_cannot_forge_a_log_line(self) -> None:
+        headers = {USER_AGENT_HEADER: "curl/8.0\n2026-01-01 INFO forged"}
+
+        assert extract_context(headers)["user_agent"] == "curl/8.02026-01-01 INFO forged"
+
     def test_skips_fields_that_have_no_header(self) -> None:
         assert "endpoint" not in extract_context({})
 
@@ -170,6 +182,20 @@ class TestSanitizeHeaderValue:
 
     def test_falls_back_to_unset_when_nothing_survives(self) -> None:
         assert sanitize_header_value("///") == UNSET
+
+
+class TestSanitizeFreeText:
+    def test_keeps_the_punctuation_a_user_agent_needs(self) -> None:
+        assert sanitize_free_text("Mozilla/5.0 (X11; Linux x86_64)") == "Mozilla/5.0 (X11; Linux x86_64)"
+
+    def test_strips_the_control_characters_that_would_forge_a_line(self) -> None:
+        assert sanitize_free_text("a\nb\tc\x00d\x7f") == "abcd"
+
+    def test_truncates_to_256_characters(self) -> None:
+        assert sanitize_free_text("a" * 300) == "a" * 256
+
+    def test_falls_back_to_unset_when_nothing_survives(self) -> None:
+        assert sanitize_free_text("\n\t") == UNSET
 
 
 class TestCorrelationHeaders:
@@ -201,4 +227,9 @@ class TestStandardFields:
         assert "ip" not in extract_context({"X-Forwarded-For": "203.0.113.7"})
 
     def test_the_always_kept_fields_are_the_correlation_metadata(self) -> None:
-        assert ALWAYS_KEEP_FIELDS == {"request_id", "ip", "client_trace_id", "correlation_id"}
+        assert ALWAYS_KEEP_FIELDS == {"request_id", "ip", "user_agent", "client_trace_id", "correlation_id"}
+
+    def test_the_user_agent_is_read_from_its_header(self) -> None:
+        user_agent = next(field for field in STANDARD_FIELDS if field.name == "user_agent")
+
+        assert user_agent.header == USER_AGENT_HEADER

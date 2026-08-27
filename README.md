@@ -36,9 +36,10 @@ exception handling. Omit it for non-web applications.
 
 ## Quick Start
 
-1. **Declare events:** Subclass `DefaultEventCatalogue` with your application's
-   events. Each event defines per-stream field allow-lists, which is what keeps
-   application detail out of SIEM.
+1. **Declare events:** Subclass `DefaultEventCatalogue`, give the system events
+   the ids your system numbers them with (`Base.SYS_APP_STARTED.with_id("100601")`),
+   and declare your application's own events. Each event defines per-stream field
+   allow-lists, which is what keeps application detail out of SIEM.
 
 2. **Configure at boot:** Call `gflog.configure()` with your catalogue and
    settings. Configuration is validated, so mistakes fail at startup rather than
