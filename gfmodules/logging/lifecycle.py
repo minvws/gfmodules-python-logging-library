@@ -1,7 +1,7 @@
 import logging
 import signal
 import sys
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from types import FrameType, TracebackType
 from typing import Any
@@ -54,8 +54,10 @@ def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] |
             logger,
             events.SYS_APP_CRASHED,
             "application crashed: uncaught exception",
-            shutdown_reason=shutdown_reason(),
-            last_exception_type=exc_type.__name__,
+            fields={
+                "shutdown_reason": shutdown_reason(),
+                "last_exception_type": exc_type.__name__,
+            },
             exc_info=(exc_type, exc_value, exc_tb),
         )
 
@@ -95,19 +97,22 @@ async def lifespan_logging(
     version: str,
     config_path: str | None = None,
     catalogue: type[EventCatalogue] | None = None,
-    **fields: Any,
+    started_fields: Mapping[str, Any] | None = None,
+    stopped_fields: Mapping[str, Any] | None = None,
 ) -> AsyncGenerator[None]:
-    """Extra keyword arguments are reported on the started event. Nothing is
-    emitted on the way out of a crash: the excepthook has already reported it.
+    """Emit startup and shutdown lifecycle events.
+
+    Started event includes version, config_path, and custom started_fields.
+    Stopped event includes shutdown_reason and custom stopped_fields.
+    Field mappings are evaluated when their event fires, allowing stopped_fields
+    to be updated during the run. Crashes are handled by excepthook.
     """
     events = resolve_catalogue(catalogue)
     events.event(
         logger,
         events.SYS_APP_STARTED,
         "application started",
-        version=version,
-        config_path=config_path,
-        **fields,
+        fields={**(started_fields or {}), "version": version, "config_path": config_path},
     )
     try:
         yield
@@ -117,5 +122,5 @@ async def lifespan_logging(
                 logger,
                 events.SYS_APP_STOPPED,
                 "application stopped",
-                shutdown_reason=shutdown_reason(),
+                fields={**(stopped_fields or {}), "shutdown_reason": shutdown_reason()},
             )

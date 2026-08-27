@@ -27,7 +27,7 @@ def propagating_logger() -> None:
 class TestCaptureRecords:
     def test_captures_what_was_logged(self) -> None:
         with capture_records() as captured:
-            emit(logger, CREATED, "resource created", resource_id="12345")
+            emit(logger, CREATED, "resource created", fields={"resource_id": "12345"})
 
         assert len(captured) == 1
         assert captured.entries[0].event_id == "100607"
@@ -36,7 +36,7 @@ class TestCaptureRecords:
 
     def test_renders_the_message_the_log_server_would_receive(self) -> None:
         with capture_records() as captured:
-            emit(logger, CREATED, "resource created", resource_id="12345", owner_id="o-1")
+            emit(logger, CREATED, "resource created", fields={"resource_id": "12345", "owner_id": "o-1"})
 
         assert captured.entries[0].message == {"resource_id": "12345", "owner_id": "o-1"}
 
@@ -84,13 +84,13 @@ class TestCaptureRecords:
 class TestCaptureStream:
     def test_applies_the_per_event_field_allow_list(self) -> None:
         with capture_stream(LoggingStreams.SIEM) as siem:
-            emit(logger, CREATED, "created", resource_id="12345", owner_id="o-1", created_by="alice")
+            emit(logger, CREATED, "created", fields={"resource_id": "12345", "owner_id": "o-1", "created_by": "alice"})
 
         assert siem == [{"resource_id": "12345"}]
 
     def test_the_app_stream_sees_its_own_allow_list(self) -> None:
         with capture_stream(LoggingStreams.APP) as app:
-            emit(logger, CREATED, "created", resource_id="12345", owner_id="o-1", created_by="alice")
+            emit(logger, CREATED, "created", fields={"resource_id": "12345", "owner_id": "o-1", "created_by": "alice"})
 
         assert app == [{"resource_id": "12345", "owner_id": "o-1", "created_by": "alice"}]
 
@@ -117,21 +117,21 @@ class TestNestedCaptures:
 
     def test_two_streams_observe_the_same_record(self) -> None:
         with capture_stream(LoggingStreams.APP) as app, capture_stream(LoggingStreams.SIEM) as siem:
-            emit(logger, CREATED, "created", resource_id="12345", owner_id="o-1", created_by="alice")
+            emit(logger, CREATED, "created", fields={"resource_id": "12345", "owner_id": "o-1", "created_by": "alice"})
 
         assert app == [{"resource_id": "12345", "owner_id": "o-1", "created_by": "alice"}]
         assert siem == [{"resource_id": "12345"}]
 
     def test_a_field_can_be_shown_absent_from_one_stream_only(self) -> None:
         with capture_stream(LoggingStreams.APP) as app, capture_stream(LoggingStreams.SIEM) as siem:
-            emit(logger, CREATED, "created", resource_id="12345", owner_id="o-1", created_by="alice")
+            emit(logger, CREATED, "created", fields={"resource_id": "12345", "owner_id": "o-1", "created_by": "alice"})
 
         assert_fields_absent(siem, "owner_id", "created_by")
         assert app[0]["owner_id"] == "o-1"
 
     def test_record_and_stream_captures_nest_together(self) -> None:
         with capture_records() as captured, capture_stream(LoggingStreams.SIEM) as siem:
-            emit(logger, CREATED, "created", resource_id="12345", owner_id="o-1")
+            emit(logger, CREATED, "created", fields={"resource_id": "12345", "owner_id": "o-1"})
 
         assert len(captured) == 1
         assert siem == [{"resource_id": "12345"}]
@@ -139,8 +139,8 @@ class TestNestedCaptures:
     def test_the_inner_capture_stops_at_its_own_block(self) -> None:
         with capture_stream(LoggingStreams.APP) as app:
             with capture_stream(LoggingStreams.SIEM) as siem:
-                emit(logger, CREATED, "created", resource_id="1")
-            emit(logger, CREATED, "created", resource_id="2")
+                emit(logger, CREATED, "created", fields={"resource_id": "1"})
+            emit(logger, CREATED, "created", fields={"resource_id": "2"})
 
         assert [message["resource_id"] for message in app] == ["1", "2"]
         assert [message["resource_id"] for message in siem] == ["1"]
@@ -161,7 +161,7 @@ class TestNestedCaptures:
 class TestAssertEventEmitted:
     def test_returns_the_matching_record(self) -> None:
         with capture_records() as captured:
-            emit(logger, CREATED, "created", resource_id="12345")
+            emit(logger, CREATED, "created", fields={"resource_id": "12345"})
 
         entry = assert_event_emitted(captured, CREATED, resource_id="12345")
 
@@ -176,15 +176,15 @@ class TestAssertEventEmitted:
 
     def test_fails_when_no_record_carries_the_expected_fields(self) -> None:
         with capture_records() as captured:
-            emit(logger, CREATED, "created", resource_id="99999")
+            emit(logger, CREATED, "created", fields={"resource_id": "99999"})
 
         with pytest.raises(AssertionError, match="none carried"):
             assert_event_emitted(captured, CREATED, resource_id="12345")
 
     def test_matches_the_right_record_among_several(self) -> None:
         with capture_records() as captured:
-            emit(logger, CREATED, "first", resource_id="11111")
-            emit(logger, CREATED, "second", resource_id="22222")
+            emit(logger, CREATED, "first", fields={"resource_id": "11111"})
+            emit(logger, CREATED, "second", fields={"resource_id": "22222"})
 
         assert assert_event_emitted(captured, CREATED, resource_id="22222").description == "second"
 

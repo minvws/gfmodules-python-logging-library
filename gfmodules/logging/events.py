@@ -131,16 +131,22 @@ def emit(
     event: LogEvent,
     message: str,
     *,
+    fields: Mapping[str, Any] | None = None,
     event_id: str | None = None,
     exc_info: Any = None,
     stacklevel: int = 1,
-    **fields: Any,
 ) -> None:
     """``stacklevel`` follows the stdlib convention: 1 reports this function's
     caller, and a helper wrapping ``emit`` passes 2 to point past itself.
     """
+    values = dict(fields) if fields else {}
+
+    reserved = sorted(RESERVED_FIELDS & values.keys())
+    if reserved:
+        raise ValueError(f"event {event.event_id} names fields a log record reserves: {', '.join(reserved)}")
+
     if _strict_fields:
-        unrouted = unrouted_fields(event, fields)
+        unrouted = unrouted_fields(event, values)
         if unrouted:
             raise ValueError(f"event {event.event_id} routes none of these fields to any stream: {', '.join(unrouted)}")
 
@@ -153,7 +159,7 @@ def emit(
     }
     if event.fields:
         extra["field_streams"] = event.fields
-    extra.update(fields)
+    extra.update(values)
     logger.log(event.level, message, extra=extra, exc_info=exc_info, stacklevel=stacklevel + 1)
 
 
@@ -175,19 +181,19 @@ class EventCatalogue:
         event: LogEvent,
         message: str,
         *,
+        fields: Mapping[str, Any] | None = None,
         event_id: str | None = None,
         exc_info: Any = None,
         stacklevel: int = 1,
-        **fields: Any,
     ) -> None:
         emit(
             logger,
             event,
             message,
+            fields=fields,
             event_id=event_id,
             exc_info=exc_info,
             stacklevel=stacklevel + 1,
-            **fields,
         )
 
 

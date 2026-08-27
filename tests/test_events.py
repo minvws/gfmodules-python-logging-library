@@ -52,7 +52,7 @@ class TestEmit:
     def test_stamps_the_event_id_and_streams_on_the_record(
         self, logger: logging.Logger, handler: RecordingHandler
     ) -> None:
-        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "resource created", resource_id="12345")
+        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "resource created", fields={"resource_id": "12345"})
 
         record = handler.records[0]
         assert record.event_id == "100607"  # type: ignore[attr-defined]
@@ -102,10 +102,78 @@ class TestEmit:
         assert handler.records[0].exc_info[1] is exc
 
     def test_extra_fields_may_shadow_nothing_builtin(self, logger: logging.Logger, handler: RecordingHandler) -> None:
-        emit(logger, CompleteCatalogue.ACCESS_REQUEST, "access", status_code=204, duration_ms=7)
+        emit(logger, CompleteCatalogue.ACCESS_REQUEST, "access", fields={"status_code": 204, "duration_ms": 7})
 
         assert handler.records[0].status_code == 204  # type: ignore[attr-defined]
         assert handler.records[0].duration_ms == 7  # type: ignore[attr-defined]
+
+
+class TestFieldNamespace:
+    def test_a_splatted_mapping_cannot_reach_the_event_id(
+        self, logger: logging.Logger, handler: RecordingHandler
+    ) -> None:
+        headers = {"user-agent": "curl/8.5", "event_id": "666"}
+
+        with pytest.raises(TypeError):
+            emit(logger, CompleteCatalogue.ACCESS_REQUEST, "access", **headers)  # type: ignore[arg-type]
+
+        assert handler.records == []
+
+    def test_untrusted_keys_reach_the_record_only_as_field_values(
+        self, logger: logging.Logger, handler: RecordingHandler
+    ) -> None:
+        headers = {"user-agent": "curl/8.5", "event_id": "666"}
+
+        emit(logger, CompleteCatalogue.ACCESS_REQUEST, "access", fields={"request_headers": headers})
+
+        record = handler.records[0]
+        assert record.event_id == "094500"  # type: ignore[attr-defined]
+        assert record.request_headers == headers  # type: ignore[attr-defined]
+
+    def test_a_field_cannot_overwrite_the_stream_the_event_routes_to(
+        self, logger: logging.Logger, handler: RecordingHandler
+    ) -> None:
+        with pytest.raises(ValueError, match="stream"):
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"stream": "siem"})
+
+        assert handler.records == []
+
+    def test_a_field_cannot_overwrite_the_event_id(self, logger: logging.Logger) -> None:
+        with pytest.raises(ValueError, match="event_id"):
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"event_id": "666"})
+
+    def test_names_every_reserved_field_at_once(self, logger: logging.Logger) -> None:
+        with pytest.raises(ValueError, match="event_id, module"):
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"module": "auth", "event_id": "666"})
+
+    def test_refuses_reserved_names_with_strict_fields_off(self, logger: logging.Logger) -> None:
+        set_strict_fields(False)
+
+        with pytest.raises(ValueError, match="stream"):
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"stream": "siem"})
+
+    def test_the_reserved_parameters_still_work_as_keywords(
+        self, logger: logging.Logger, handler: RecordingHandler
+    ) -> None:
+        exc = ValueError("boom")
+
+        emit(
+            logger,
+            CompleteCatalogue.ACCESS_REQUEST,
+            "access",
+            fields={"status_code": 500},
+            event_id="100700",
+            exc_info=exc,
+        )
+
+        record = handler.records[0]
+        assert record.event_id == "100700"  # type: ignore[attr-defined]
+        assert record.status_code == 500  # type: ignore[attr-defined]
+        assert record.exc_info is not None
+
+    def test_the_catalogue_helper_guards_the_same_way(self, logger: logging.Logger) -> None:
+        with pytest.raises(ValueError, match="stream"):
+            CompleteCatalogue.event(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"stream": "siem"})
 
 
 class TestSourceResolution:
@@ -202,7 +270,7 @@ class TestReservedFieldNames:
     def test_a_reserved_field_really_does_break_the_standard_library(self, logger: logging.Logger) -> None:
         """The check is worth having only if the failure it prevents is real."""
         with pytest.raises(KeyError, match="module"):
-            emit(logger, CompleteCatalogue.ACCESS_REQUEST, "access", module="auth")
+            logger.info("access", extra={"module": "auth"})
 
     def test_the_running_interpreter_adds_no_attribute_the_frozen_set_misses(self) -> None:
         """The guard on the frozen list.
@@ -325,27 +393,27 @@ class TestStrictFields:
 
     def test_rejects_a_field_no_stream_would_carry(self, logger: logging.Logger) -> None:
         with pytest.raises(ValueError, match="resouce_id"):
-            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", resouce_id="r-1")
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"resouce_id": "r-1"})
 
     def test_accepts_an_allow_listed_field(self, logger: logging.Logger, handler: RecordingHandler) -> None:
-        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", resource_id="r-1")
+        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"resource_id": "r-1"})
 
         assert handler.records[0].resource_id == "r-1"  # type: ignore[attr-defined]
 
     def test_accepts_correlation_metadata_that_every_stream_keeps(
         self, logger: logging.Logger, handler: RecordingHandler
     ) -> None:
-        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", request_id="req-1")
+        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"request_id": "req-1"})
 
         assert handler.records[0].request_id == "req-1"  # type: ignore[attr-defined]
 
     def test_says_nothing_about_an_event_that_declares_no_routing(self, logger: logging.Logger) -> None:
-        emit(logger, LogEvent("1", logging.INFO, (LoggingStreams.APP,)), "no routing", anything="goes")
+        emit(logger, LogEvent("1", logging.INFO, (LoggingStreams.APP,)), "no routing", fields={"anything": "goes"})
 
     def test_is_off_by_default_so_a_typo_never_takes_a_request_down(self, logger: logging.Logger) -> None:
         set_strict_fields(False)
 
-        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", resouce_id="r-1")
+        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"resouce_id": "r-1"})
 
     def test_reports_which_fields_reach_nothing(self) -> None:
         assert unrouted_fields(CompleteCatalogue.RESOURCE_CREATED, iter(["resource_id", "nope"])) == ("nope",)

@@ -52,7 +52,7 @@ exception handling. Omit it for non-web applications.
    startup, and call `gflog.install_excepthook()` and `gflog.install_signal_handlers()`.
 
 5. **Log events:** Call `gflog.emit(logger, Log.YOUR_EVENT, "message",
-   field="value")`. Context is attached automatically.
+   fields={"field": "value"})`. Fields travel as one mapping. Context is attached automatically.
 
 For detailed steps with examples, see [docs/STARTING_GUIDE.md](docs/STARTING_GUIDE.md).
 A complete working FastAPI application is in [examples/](examples/).

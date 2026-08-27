@@ -224,30 +224,48 @@ pass to `FastAPI(lifespan=...)`, so it sits alongside whatever else the
 application does at startup. After a crash it emits no stopped event, because the
 excepthook has already reported it.
 
-Any further keyword argument is reported on the started event, for an
-application whose startup record carries more than the version and config path:
+The two events carry their own fields: how the process was configured belongs on
+started, what it ended up doing on stopped.
 
 ```python
-async with gflog.lifespan_logging(logger, version=read_version(), read_only_mode=True):
+async with gflog.lifespan_logging(
+    logger,
+    version=read_version(),
+    started_fields={"read_only_mode": True},
+    stopped_fields=teardown,
+):
 ```
 
-Routing still comes from the catalogue, so override `SYS_APP_STARTED` to name
-the field in its allow-list or it reaches no stream.
+Each mapping is read when its event fires, so `stopped_fields` may be a dict the
+application still holds and fills in while it runs. `version` and `config_path`
+win on started, `shutdown_reason` on stopped.
+
+Routing still comes from the catalogue, so override `SYS_APP_STARTED` or
+`SYS_APP_STOPPED` to name the field in its allow-list or it reaches no stream.
 
 ## 5. Log an event
 
 ```python
 logger = logging.getLogger("app.resources")   # under the configured logger_root
 
-gflog.emit(logger, Log.RESOURCE_CREATED, "resource created", resource_id="r-1", owner_id="o-1")
+gflog.emit(logger, Log.RESOURCE_CREATED, "resource created",
+           fields={"resource_id": "r-1", "owner_id": "o-1"})
+```
+
+Fields travel as one mapping, never as loose keyword arguments, pass such a mapping as one field:
+
+```python
+gflog.emit(logger, Log.REQUEST_RECEIVED, "request received",
+           fields={"request_headers": dict(request.headers)})
 ```
 
 `source` reports the real call site. An application helper that wraps `emit`
 should pass `stacklevel=2` so records point past the wrapper:
 
 ```python
-def log_rejected_request(logger, reason, **kwargs):
-    gflog.emit(logger, Log.REQUEST_REJECTED, reason, error_reason=reason, stacklevel=2, **kwargs)
+def log_rejected_request(logger, reason, fields=None):
+    gflog.emit(logger, Log.REQUEST_REJECTED, reason,
+               fields={**(fields or {}), "error_reason": reason}, stacklevel=2)
 ```
 
 ## 6. Bind context outside a request

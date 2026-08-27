@@ -107,19 +107,54 @@ class TestLifespanLogging:
     async def test_carries_the_applications_own_fields_on_started(
         self, logger: logging.Logger, records: RecordingHandler
     ) -> None:
-        async with lifespan_logging(logger, version="1.2.3", read_only_mode=True):
+        async with lifespan_logging(logger, version="1.2.3", started_fields={"read_only_mode": True}):
             pass
 
         assert records.with_event_id(STARTED)[0].read_only_mode is True  # type: ignore[attr-defined]
 
-    async def test_the_applications_own_fields_do_not_leak_onto_stopped(
+    async def test_the_started_fields_do_not_leak_onto_stopped(
         self, logger: logging.Logger, records: RecordingHandler
     ) -> None:
         """Stopped reports why the process ended, not how it was configured."""
-        async with lifespan_logging(logger, version="1.2.3", read_only_mode=True):
+        async with lifespan_logging(logger, version="1.2.3", started_fields={"read_only_mode": True}):
             pass
 
         assert not hasattr(_stopped_records(records)[0], "read_only_mode")
+
+    async def test_carries_the_applications_own_fields_on_stopped(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3", stopped_fields={"requests_served": 41}):
+            pass
+
+        assert _stopped_records(records)[0].requests_served == 41  # type: ignore[attr-defined]
+
+    async def test_the_stopped_fields_do_not_leak_onto_started(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3", stopped_fields={"requests_served": 41}):
+            pass
+
+        assert not hasattr(records.with_event_id(STARTED)[0], "requests_served")
+
+    async def test_the_stopped_fields_are_read_when_the_process_ends(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        """What the application ended up doing is only known by then."""
+        teardown: dict[str, Any] = {"requests_served": 0}
+
+        async with lifespan_logging(logger, version="1.2.3", stopped_fields=teardown):
+            teardown["requests_served"] = 41
+
+        assert _stopped_records(records)[0].requests_served == 41  # type: ignore[attr-defined]
+
+    async def test_the_shutdown_reason_is_not_the_applications_to_overwrite(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3", stopped_fields={"shutdown_reason": "whatever"}):
+            _record_signal_shutdown()
+
+        assert _stopped_records(records)[0].shutdown_reason == "signal:SIGTERM"  # type: ignore[attr-defined]
 
 
 class TestExcepthook:

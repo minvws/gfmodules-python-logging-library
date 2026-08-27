@@ -41,9 +41,7 @@ def build_app(**middleware_options: object) -> FastAPI:
             logger,
             CompleteCatalogue.RESOURCE_CREATED,
             "resource created",
-            resource_id="12345",
-            owner_id="o-1",
-            created_by="alice",
+            fields={"resource_id": "12345", "owner_id": "o-1", "created_by": "alice"},
         )
         return JSONResponse({"resources": []})
 

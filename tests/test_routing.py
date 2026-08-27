@@ -110,9 +110,7 @@ class TestApplicationEvents:
             logging.getLogger("app.service"),
             CompleteCatalogue.RESOURCE_CREATED,
             "resource created",
-            resource_id="r-1",
-            owner_id="o-1",
-            created_by="alice",
+            fields={"resource_id": "r-1", "owner_id": "o-1", "created_by": "alice"},
         )
 
         event = CompleteCatalogue.RESOURCE_CREATED
@@ -137,9 +135,7 @@ class TestARenamedRoot:
             logging.getLogger("svc.service"),
             CompleteCatalogue.RESOURCE_CREATED,
             "resource created",
-            resource_id="r-1",
-            owner_id="o-1",
-            created_by="alice",
+            fields={"resource_id": "r-1", "owner_id": "o-1", "created_by": "alice"},
         )
 
         assert streams_for(delivered, CompleteCatalogue.RESOURCE_CREATED.event_id) >= {"app", "siem"}
@@ -152,7 +148,7 @@ class TestARenamedRoot:
             logging.getLogger("app.service"),
             CompleteCatalogue.RESOURCE_CREATED,
             "resource created",
-            resource_id="r-1",
+            fields={"resource_id": "r-1"},
         )
 
         assert streams_for(delivered, CompleteCatalogue.RESOURCE_CREATED.event_id) == {"debug"}
@@ -185,7 +181,7 @@ class TestLoggingOutsideTheRoot:
             logging.getLogger("app.service"),
             CompleteCatalogue.RESOURCE_CREATED,
             "resource created",
-            resource_id="r-1",
+            fields={"resource_id": "r-1"},
         )
 
         assert "logger app.service is outside the svc tree" in misrouting_reports(delivered)[0]
@@ -196,7 +192,7 @@ class TestLoggingOutsideTheRoot:
         stray = logging.getLogger("app.service")
 
         for _ in range(3):
-            gflog.emit(stray, CompleteCatalogue.RESOURCE_CREATED, "resource created", resource_id="r-1")
+            gflog.emit(stray, CompleteCatalogue.RESOURCE_CREATED, "resource created", fields={"resource_id": "r-1"})
 
         assert len({report for report in misrouting_reports(delivered)}) == 1
 
@@ -208,7 +204,7 @@ class TestLoggingOutsideTheRoot:
             logging.getLogger("app.service"),
             CompleteCatalogue.RESOURCE_CREATED,
             "resource created",
-            resource_id="r-1",
+            fields={"resource_id": "r-1"},
         )
 
         assert streams_reporting(delivered, "is outside the") == {"app", "debug"}
@@ -220,7 +216,7 @@ class TestLoggingOutsideTheRoot:
             logging.getLogger("svc.service"),
             CompleteCatalogue.RESOURCE_CREATED,
             "resource created",
-            resource_id="r-1",
+            fields={"resource_id": "r-1"},
         )
 
         assert misrouting_reports(delivered) == []

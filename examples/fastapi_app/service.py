@@ -25,9 +25,7 @@ def create_resource(resource_id: str, owner_id: str, created_by: str) -> None:
         logger,
         Log.RESOURCE_CREATED,
         "resource created",
-        resource_id=resource_id,
-        owner_id=owner_id,
-        created_by=created_by,
+        fields={"resource_id": resource_id, "owner_id": owner_id, "created_by": created_by},
     )
 
 
@@ -41,8 +39,7 @@ def delete_resource(resource_id: str, reason: str) -> None:
         logger,
         Log.RESOURCE_DELETED,
         "resource deleted",
-        resource_id=resource_id,
-        reason=reason,
+        fields={"resource_id": resource_id, "reason": reason},
     )
 
 
@@ -54,7 +51,6 @@ def log_rejected_lookup(resource_id: str, error_reason: str) -> None:
         logger,
         Log.LOOKUP_REJECTED,
         "lookup rejected",
-        resource_id=resource_id,
-        error_reason=error_reason,
+        fields={"resource_id": resource_id, "error_reason": error_reason},
         stacklevel=2,
     )
