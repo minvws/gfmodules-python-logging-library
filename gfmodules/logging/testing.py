@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from gfmodules.logging.context import register_context_fields
-from gfmodules.logging.events import EventCatalogue, LogEvent, missing_events, set_strict_fields
+from gfmodules.logging.events import EventCatalogue, LogEvent, missing_events, set_strict_fields, unset_event_ids
 from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter
 from gfmodules.logging.lifecycle import record_shutdown_reason, reset_shutdown_reason, shutdown_reason
@@ -188,11 +188,14 @@ def reset_for_tests() -> None:
 
 
 def assert_catalogue_complete(catalogue: type[EventCatalogue]) -> None:
-    """A missing slot cannot be caught by a type checker, so this is what moves
-    the failure from boot into CI.
+    """A missing slot, or one inheriting routing without an id of its own, cannot
+    be caught by a type checker, so this is what moves the failure from boot into CI.
     """
     missing = missing_events(catalogue)
     assert not missing, f"{catalogue.__name__} does not define required events: {', '.join(missing)}"
+
+    unset = unset_event_ids(catalogue)
+    assert not unset, f"{catalogue.__name__} declares events with no event id: {', '.join(unset)}"
 
 
 def assert_event_emitted(

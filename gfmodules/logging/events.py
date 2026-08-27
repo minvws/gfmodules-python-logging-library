@@ -53,6 +53,11 @@ RESERVED_FIELDS: frozenset[str] = _STDLIB_RECORD_FIELDS | {
 }
 
 
+#: The id of an event whose number the application still has to supply. Event ids
+#: differ per system, so the library declares routing and leaves the numbering out.
+UNSET_EVENT_ID = ""
+
+
 @dataclass(frozen=True)
 class LogEvent:
     """A single loggable event from the logging spec.
@@ -65,6 +70,31 @@ class LogEvent:
     level: int
     streams: tuple[LoggingStreams, ...]
     fields: Mapping[LoggingStreams, tuple[str, ...]] = field(default_factory=dict)
+
+    def replace(
+        self,
+        *,
+        event_id: str | None = None,
+        level: int | None = None,
+        streams: tuple[LoggingStreams, ...] | None = None,
+        fields: Mapping[LoggingStreams, tuple[str, ...]] | None = None,
+    ) -> "LogEvent":
+        """A copy with the named attributes changed.
+
+        An application overriding an inherited event states only what differs,
+        so the library's routing stays one definition rather than a copy per
+        application.
+        """
+        return LogEvent(
+            event_id=self.event_id if event_id is None else event_id,
+            level=self.level if level is None else level,
+            streams=self.streams if streams is None else streams,
+            fields=self.fields if fields is None else fields,
+        )
+
+    def with_id(self, event_id: str) -> "LogEvent":
+        """This system's number for an event the library routes."""
+        return self.replace(event_id=event_id)
 
 
 #: The events the library emits on the application's behalf, so every catalogue must fill them.
@@ -170,30 +200,43 @@ _SIEM = LoggingStreams.SIEM
 
 
 class DefaultEventCatalogue(EventCatalogue):
-    """The system events pre-filled, so an application declares only its own."""
+    """The routing for the events the library emits, so an application declares
+    only its own events and the ids its system numbers them with.
 
-    SYS_APP_STARTED = LogEvent("100601", logging.INFO, (_APP,), {_APP: ("version", "config_path")})
+    Every id here is :data:`UNSET_EVENT_ID`: numbering differs per system, and a
+    default number is one an application adopts by accident. Fill them in with
+    :meth:`LogEvent.with_id`, or :meth:`LogEvent.replace` where the level,
+    streams or field allow-lists differ too::
+
+        class Log(DefaultEventCatalogue):
+            SYS_APP_STARTED = DefaultEventCatalogue.SYS_APP_STARTED.with_id("100801")
+
+    :func:`validate_catalogue` rejects an id left unset, so the omission surfaces
+    at boot rather than as a record the log server cannot place.
+    """
+
+    SYS_APP_STARTED = LogEvent(UNSET_EVENT_ID, logging.INFO, (_APP,), {_APP: ("version", "config_path")})
     SYS_APP_STOPPED = LogEvent(
-        "100602",
+        UNSET_EVENT_ID,
         logging.INFO,
         (_APP, _SIEM),
         {_APP: ("shutdown_reason", "last_exception_type"), _SIEM: ("shutdown_reason",)},
     )
     SYS_APP_CRASHED = LogEvent(
-        "100602",
+        UNSET_EVENT_ID,
         logging.CRITICAL,
         (_APP, _SIEM),
         {_APP: ("shutdown_reason", "last_exception_type"), _SIEM: ("shutdown_reason",)},
     )
     SYS_UNHANDLED_EXCEPTION = LogEvent(
-        "100604",
+        UNSET_EVENT_ID,
         logging.ERROR,
         (_APP, _SIEM),
         {_APP: ("exception_type", "endpoint", "method"), _SIEM: ("exception_type", "endpoint", "method")},
     )
-    SYS_MISSING_CORRELATION_ID = LogEvent("100606", logging.ERROR, (_APP,), {_APP: ("endpoint", "method")})
+    SYS_MISSING_CORRELATION_ID = LogEvent(UNSET_EVENT_ID, logging.ERROR, (_APP,), {_APP: ("endpoint", "method")})
     ACCESS_REQUEST = LogEvent(
-        "094500",
+        UNSET_EVENT_ID,
         logging.INFO,
         (_APP,),
         {_APP: ("endpoint", "method", "status_code", "duration_ms", "body", "body_truncated")},
@@ -208,6 +251,10 @@ def declared_events(catalogue: type[EventCatalogue]) -> Iterator[tuple[str, LogE
             if name not in seen and isinstance(value, LogEvent):
                 seen.add(name)
                 yield name, value
+
+
+def unset_event_ids(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
+    return tuple(sorted(name for name, event in declared_events(catalogue) if not event.event_id))
 
 
 def reserved_field_names(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
@@ -228,6 +275,10 @@ def validate_catalogue(catalogue: type[EventCatalogue]) -> None:
     missing = missing_events(catalogue)
     if missing:
         raise ValueError(f"{catalogue.__name__} does not define required events: {', '.join(missing)}")
+
+    unset = unset_event_ids(catalogue)
+    if unset:
+        raise ValueError(f"{catalogue.__name__} declares events with no event id: {', '.join(unset)}. ")
 
     reserved = reserved_field_names(catalogue)
     if reserved:
