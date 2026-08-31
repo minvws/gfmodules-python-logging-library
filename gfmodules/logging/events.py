@@ -94,10 +94,21 @@ class LogEvent:
 
     def add_fields(
         self,
-        *,
         fields: Mapping[LoggingStreams, tuple[str, ...]] | None = None,
     ) -> "LogEvent":
-        """A copy carrying these fields on top of the ones already allow-listed."""
+        """A copy carrying these fields on top of the ones already allow-listed.
+
+        Example::
+
+            event = LogEvent(
+                event_id="1234",
+                level=logging.INFO,
+                streams=(LoggingStreams.APP,),
+                fields={LoggingStreams.APP: ("resource_id",)},
+            )
+            new_event = event.add_fields(fields={LoggingStreams.APP: ("owner_id",)})
+            # new_event.fields now contains both "resource_id" and "owner_id" for the APP stream.
+        """
         if not fields:
             return self
         merged = {**self.fields}
