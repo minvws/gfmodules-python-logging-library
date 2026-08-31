@@ -40,7 +40,8 @@ Four things have to happen, in this order:
    `setup_logging()`, called from the entry point. It validates the catalogue,
    so a slot you forgot stops the process at boot.
 3. **Add `RequestContextMiddleware` last**, so it runs outermost and wraps every
-   route and handler registered before it.
+   route and handler registered before it. It reads the access log setting
+   `configure()` registered and holds on to it.
 4. **Compose `lifespan_logging` into your own lifespan** rather than passing it
    to `FastAPI(lifespan=...)`, so your startup work still fits alongside it.
 

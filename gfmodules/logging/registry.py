@@ -5,11 +5,11 @@ through every library component that logs.
 from gfmodules.logging.events import EventCatalogue, validate_catalogue
 
 _catalogue: type[EventCatalogue] | None = None
-_access_logs = False
+_access_logs: bool | None = None
 
 
-def register_catalogue(catalogue: type[EventCatalogue]) -> None:
-    validate_catalogue(catalogue, access_logs=access_logs_enabled())
+def register_catalogue(catalogue: type[EventCatalogue], *, access_logs: bool = True) -> None:
+    validate_catalogue(catalogue, access_logs=access_logs)
     global _catalogue
     _catalogue = catalogue
 
@@ -34,5 +34,14 @@ def register_access_logs(enabled: bool) -> None:
     _access_logs = enabled
 
 
-def access_logs_enabled() -> bool:
+def clear_access_logs() -> None:
+    global _access_logs
+    _access_logs = None
+
+
+def active_access_logs() -> bool:
+    if _access_logs is None:
+        raise RuntimeError(
+            "access logging setting unknown: call gfmodules.logging.configure() before adding the middleware"
+        )
     return _access_logs

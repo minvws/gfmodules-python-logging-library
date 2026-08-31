@@ -26,7 +26,7 @@ from gfmodules.logging.context import (
 )
 from gfmodules.logging.events import EventCatalogue
 from gfmodules.logging.loggers import access_logger_name, internal_logger_name
-from gfmodules.logging.registry import access_logs_enabled, resolve_catalogue
+from gfmodules.logging.registry import active_access_logs, resolve_catalogue
 
 __all__ = [
     "RequestContext",
@@ -199,6 +199,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.catalogue = catalogue
         self.correlation_id_expected = correlation_id_expected
+        self.access_logs = active_access_logs()
         # Off unless asked for: a body is the likeliest place for the data an
         # application least wants logged, and the console applies no allow-list.
         self.capture_body_methods = tuple(method.upper() for method in capture_body_methods)
@@ -234,7 +235,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 context.apply_to(response)
                 return response
             finally:
-                if access_logs_enabled():
+                if self.access_logs:
                     self._log_access(catalogue, request, response, body, start)
 
     def _log_access(

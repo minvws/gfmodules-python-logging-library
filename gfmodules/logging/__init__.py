@@ -56,7 +56,7 @@ from gfmodules.logging.loggers import (
     warn_on_app_stream,
 )
 from gfmodules.logging.registry import (
-    access_logs_enabled,
+    active_access_logs,
     active_catalogue,
     register_access_logs,
     register_catalogue,
@@ -87,7 +87,7 @@ __all__ = [
     "PublicInspectFilter",
     "SiemFilter",
     "access_logger_name",
-    "access_logs_enabled",
+    "active_access_logs",
     "active_catalogue",
     "active_logger_root",
     "bind_context",
@@ -122,7 +122,9 @@ def configure(
     strict_fields: bool = False,
     logger_root: str = DEFAULT_LOGGER_ROOT,
 ) -> None:
-    """Call once during startup, before anything logs."""
+    """Call once during startup, before anything logs and before the middleware
+    is added
+    """
     level = loglevel.upper()
     if level not in logging.getLevelNamesMapping():
         raise ValueError(f"invalid loglevel {level}")
@@ -131,7 +133,7 @@ def configure(
     set_strict_fields(strict_fields)
     register_context_fields(extra_context_fields)
     register_access_logs(config.access_logs)
-    register_catalogue(catalogue)
+    register_catalogue(catalogue, access_logs=config.access_logs)
     register_logger_root(logger_root)
     try:
         dictConfig(LogConfigBuilder(logging_config=config, loglevel=level).build())

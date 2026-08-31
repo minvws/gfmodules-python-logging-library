@@ -223,25 +223,33 @@ class TestAccessLogging:
 
         assert records.with_event_id(ACCESS_EVENT_ID)[0].status_code is None  # type: ignore[attr-defined]
 
-    def test_logs_nothing_until_the_configuration_asks_for_access_logs(
-        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
-    ) -> None:
-        app = build_app()
-        app.add_middleware(RequestContextMiddleware)
-
-        TestClient(app).get("/ok")
-
-        assert records.with_event_id(ACCESS_EVENT_ID) == []
-
-    def test_follows_a_setting_registered_after_the_middleware_was_added(
+    def test_logs_nothing_when_the_configuration_leaves_access_logs_off(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
     ) -> None:
         client = build_client(access_logs=False)
-        register_access_logs(True)
 
         client.get("/ok")
 
-        assert len(records.with_event_id(ACCESS_EVENT_ID)) == 1
+        assert records.with_event_id(ACCESS_EVENT_ID) == []
+
+    def test_ignores_a_setting_registered_after_the_middleware_was_built(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
+    ) -> None:
+        client = build_client(access_logs=False)
+        client.get("/ok")  # builds the middleware stack, freezing the setting
+
+        register_access_logs(True)
+        client.get("/ok")
+
+        assert records.with_event_id(ACCESS_EVENT_ID) == []
+
+    def test_refuses_to_be_built_before_configure_has_run(self) -> None:
+        app = build_app()
+        app.add_middleware(RequestContextMiddleware)
+
+        with pytest.raises(RuntimeError, match="access logging"):
+            with TestClient(app):
+                pass
 
 
 @pytest.fixture
@@ -383,6 +391,7 @@ class TestCatalogueResolution:
         assert records.with_event_id(ACCESS_EVENT_ID)
 
     def test_fails_loudly_when_no_catalogue_is_available(self, records: RecordingHandler) -> None:
+        register_access_logs(False)
         app = build_app()
         app.add_middleware(RequestContextMiddleware)
         client = TestClient(app)

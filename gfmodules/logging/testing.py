@@ -18,7 +18,7 @@ from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter
 from gfmodules.logging.lifecycle import record_shutdown_reason, reset_shutdown_reason, shutdown_reason
 from gfmodules.logging.loggers import DEFAULT_LOGGER_ROOT, active_logger_root, register_logger_root
-from gfmodules.logging.registry import clear_catalogue, register_access_logs
+from gfmodules.logging.registry import clear_access_logs, clear_catalogue
 from gfmodules.logging.streams import LoggingStreams
 
 __all__ = [
@@ -181,9 +181,9 @@ def reset_for_tests() -> None:
     configures per test replaces them, and one that configures once keeps them.
     """
     clear_catalogue()
+    clear_access_logs()
     register_context_fields(())
     register_logger_root(DEFAULT_LOGGER_ROOT)
-    register_access_logs(False)
     reset_shutdown_reason()
     set_strict_fields(False)
 

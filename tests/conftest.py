@@ -7,7 +7,7 @@ import pytest
 
 from gfmodules.logging.formatter import JsonFormatter
 from gfmodules.logging.loggers import access_logger_name, internal_logger_name
-from gfmodules.logging.registry import register_catalogue
+from gfmodules.logging.registry import register_access_logs, register_catalogue
 from gfmodules.logging.testing import detached_loggers, reset_for_tests
 from tests.helpers.catalogue import CompleteCatalogue
 
@@ -75,6 +75,7 @@ def reset_library_state() -> Iterator[None]:
 
 @pytest.fixture
 def catalogue() -> type[CompleteCatalogue]:
+    register_access_logs(True)
     register_catalogue(CompleteCatalogue)
     return CompleteCatalogue
 

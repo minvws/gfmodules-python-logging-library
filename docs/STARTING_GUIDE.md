@@ -201,8 +201,15 @@ so call sites never pass them explicitly.
 
 **Access records are not logged unless you ask.** The middleware logs one per
 request only where `access_logs` is set in `ConfigLogging`; without it the
-context binding above still happens, and nothing else does. The switch is read
-per request, so `add_middleware` may run before `configure()`.
+context binding above still happens, and nothing else does.
+
+**`configure()` has to run before this.** The middleware reads the setting once,
+when it is built, and holds it for the life of the application. Added before
+`configure()`, it has nothing to read and says so:
+
+```text
+RuntimeError: access logging setting unknown: call gfmodules.logging.configure() before adding the middleware
+```
 
 **Request bodies are not logged unless you ask.** A body is the likeliest place
 for the data an application least wants in its logs, and the console handler
