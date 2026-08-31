@@ -92,6 +92,20 @@ class LogEvent:
             fields=self.fields if fields is None else fields,
         )
 
+    def add_fields(
+        self,
+        *,
+        fields: Mapping[LoggingStreams, tuple[str, ...]] | None = None,
+    ) -> "LogEvent":
+        """A copy carrying these fields on top of the ones already allow-listed."""
+        if not fields:
+            return self
+        merged = {**self.fields}
+        for stream, names in fields.items():
+            existing = merged.get(stream, ())
+            merged[stream] = existing + tuple(name for name in names if name not in existing)
+        return self.replace(fields=merged)
+
     def with_id(self, event_id: str) -> "LogEvent":
         """This system's number for an event the library routes."""
         return self.replace(event_id=event_id)
