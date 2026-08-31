@@ -26,8 +26,10 @@ def log_unhandled_exception(
             logger,
             events.SYS_UNHANDLED_EXCEPTION,
             "unhandled exception",
+            fields={
+                "exception_type": type(exc).__name__,
+                "endpoint": request.url.path,
+                "method": request.method,
+            },
             exc_info=exc,
-            exception_type=type(exc).__name__,
-            endpoint=request.url.path,
-            method=request.method,
         )

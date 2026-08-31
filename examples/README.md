@@ -45,8 +45,8 @@ Four things have to happen, in this order:
    to `FastAPI(lifespan=...)`, so your startup work still fits alongside it.
 
 After that, call sites just log: `gflog.emit(logger, Log.SOMETHING, "message",
-field="value")`. The request id, client ip, endpoint, method and correlation
-metadata are attached for you.
+fields={"field": "value"})`. The request id, client ip, endpoint, method and
+correlation metadata are attached for you.
 
 ## The part worth copying most carefully
 

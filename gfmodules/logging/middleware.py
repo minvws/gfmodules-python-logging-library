@@ -223,8 +223,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     _internal_logger(),
                     catalogue.SYS_MISSING_CORRELATION_ID,
                     f"request arrived without {CORRELATION_ID_HEADER}",
-                    endpoint=context.endpoint,
-                    method=context.method,
+                    fields={"endpoint": context.endpoint, "method": context.method},
                 )
 
             body = (
@@ -262,8 +261,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             _access_logger(),
             catalogue.ACCESS_REQUEST,
             "access",
+            fields=fields,
             event_id=catalogue.access_event_id.get((request.method, _router_path(request))),
-            **fields,
         )
 
 
