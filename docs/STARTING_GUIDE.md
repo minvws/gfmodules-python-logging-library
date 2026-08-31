@@ -28,6 +28,8 @@ class Log(Base):
     SYS_APP_CRASHED = Base.SYS_APP_CRASHED.with_id("100602")
     SYS_UNHANDLED_EXCEPTION = Base.SYS_UNHANDLED_EXCEPTION.with_id("100604")
     SYS_MISSING_CORRELATION_ID = Base.SYS_MISSING_CORRELATION_ID.with_id("100606")
+    # Only where the application logs access: with access_logs off, this one is
+    # not demanded and may be left unnumbered.
     ACCESS_REQUEST = Base.ACCESS_REQUEST.with_id("094500")
 
     # This application's own events.
@@ -131,10 +133,18 @@ application's own config module makes every import of it from there fail.
 | `debug_logs_in_console` | human-readable console output instead of JSON |
 | `correlation_id_expected` | log when a request arrives without a correlation id |
 | `trust_forwarded_for` | read the client ip from `X-Forwarded-For`; only where a proxy rewrites it |
+| `access_logs` | log a record per request; **off by default**, so nothing is access-logged until an application asks |
 
 `configure()` validates the catalogue, so a missing required event, or one
 declaring a reserved field name, fails at boot rather than the first time the
 library needs it.
+
+With `access_logs` off, `ACCESS_REQUEST` is no longer part of that contract:
+an application that has no access logging duty declares no id for it, and
+`RequestContextMiddleware` logs nothing per request. Turning the setting on
+without numbering `ACCESS_REQUEST` fails at boot, naming the slot. Applications
+whose CI calls `assert_catalogue_complete` pass `access_logs=False` there too,
+so the check matches the configuration.
 
 A `syslog_path` the process cannot resolve or connect to is also fatal at boot,
 and deliberately so: an application under an audit obligation must not run on
@@ -178,7 +188,6 @@ from gfmodules.logging.middleware import RequestContextMiddleware
 app.add_middleware(
     RequestContextMiddleware,
     correlation_id_expected=config.logging.correlation_id_expected,
-    access_log=True,
     capture_body_methods=(),                          # ("POST",) to log request bodies
     max_body_bytes=4096,                              # bodies past this are truncated
     reuse_request_state_id=False,                     # True to honour an upstream request id
@@ -189,6 +198,18 @@ app.add_middleware(
 Every event logged while a request is being handled picks up the request id,
 client ip, user agent, endpoint, method and correlation metadata automatically,
 so call sites never pass them explicitly.
+
+**Access records are not logged unless you ask.** The middleware logs one per
+request only where `access_logs` is set in `ConfigLogging`; without it the
+context binding above still happens, and nothing else does.
+
+**`configure()` has to run before this.** The middleware reads the setting once,
+when it is built, and holds it for the life of the application. Added before
+`configure()`, it has nothing to read and says so:
+
+```text
+RuntimeError: access logging setting unknown: call gfmodules.logging.configure() before adding the middleware
+```
 
 **Request bodies are not logged unless you ask.** A body is the likeliest place
 for the data an application least wants in its logs, and the console handler

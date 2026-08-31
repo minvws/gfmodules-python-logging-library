@@ -362,6 +362,40 @@ class TestUnsetEventIds:
         validate_catalogue(SystemIdsFilled)
 
 
+class SystemIdsFilledWithoutAccess(DefaultEventCatalogue):
+    SYS_APP_STARTED = DefaultEventCatalogue.SYS_APP_STARTED.with_id("100801")
+    SYS_APP_STOPPED = DefaultEventCatalogue.SYS_APP_STOPPED.with_id("100802")
+    SYS_APP_CRASHED = DefaultEventCatalogue.SYS_APP_CRASHED.with_id("100803")
+    SYS_UNHANDLED_EXCEPTION = DefaultEventCatalogue.SYS_UNHANDLED_EXCEPTION.with_id("100804")
+    SYS_MISSING_CORRELATION_ID = DefaultEventCatalogue.SYS_MISSING_CORRELATION_ID.with_id("100806")
+
+
+class TestAccessRequestIsRequiredOnlyWhereAccessIsLogged:
+    def test_an_unnumbered_access_event_passes_when_access_logging_is_off(self) -> None:
+        validate_catalogue(SystemIdsFilledWithoutAccess, access_logs=False)
+
+    def test_the_same_catalogue_is_rejected_once_access_logging_is_on(self) -> None:
+        with pytest.raises(ValueError, match="ACCESS_REQUEST"):
+            validate_catalogue(SystemIdsFilledWithoutAccess, access_logs=True)
+
+    def test_an_absent_access_event_is_not_missing_when_access_logging_is_off(self) -> None:
+        class Log(EventCatalogue):
+            SYS_APP_STARTED = LogEvent("100801", logging.INFO, (LoggingStreams.APP,))
+            SYS_APP_STOPPED = LogEvent("100802", logging.INFO, (LoggingStreams.APP,))
+            SYS_APP_CRASHED = LogEvent("100803", logging.CRITICAL, (LoggingStreams.APP,))
+            SYS_UNHANDLED_EXCEPTION = LogEvent("100804", logging.ERROR, (LoggingStreams.APP,))
+            SYS_MISSING_CORRELATION_ID = LogEvent("100806", logging.ERROR, (LoggingStreams.APP,))
+
+        assert missing_events(Log, access_logs=False) == ()
+        assert missing_events(Log, access_logs=True) == ("ACCESS_REQUEST",)
+
+    def test_an_applications_own_unnumbered_event_is_still_caught(self) -> None:
+        class Log(SystemIdsFilledWithoutAccess):
+            RESOURCE_CREATED = LogEvent(UNSET_EVENT_ID, logging.INFO, (LoggingStreams.APP,))
+
+        assert unset_event_ids(Log, access_logs=False) == ("RESOURCE_CREATED",)
+
+
 class TestDefaultEventCatalogue:
     def test_fills_every_required_slot(self) -> None:
         assert missing_events(DefaultEventCatalogue) == ()

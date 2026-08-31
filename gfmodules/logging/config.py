@@ -8,5 +8,7 @@ class ConfigLogging(BaseModel):
     include_traces: bool = Field(default=True)
     debug_logs_in_console: bool = Field(default=False)
     correlation_id_expected: bool = Field(default=False)
+    # Whether to include access logs per request.
+    access_logs: bool = Field(default=False)
     # Only enable this where a proxy rewrites X-Forwarded-For; anywhere else the caller might set it.
     trust_forwarded_for: bool = Field(default=False)

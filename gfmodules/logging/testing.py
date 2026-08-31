@@ -18,7 +18,7 @@ from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter
 from gfmodules.logging.lifecycle import record_shutdown_reason, reset_shutdown_reason, shutdown_reason
 from gfmodules.logging.loggers import DEFAULT_LOGGER_ROOT, active_logger_root, register_logger_root
-from gfmodules.logging.registry import clear_catalogue
+from gfmodules.logging.registry import clear_access_logs, clear_catalogue
 from gfmodules.logging.streams import LoggingStreams
 
 __all__ = [
@@ -181,20 +181,21 @@ def reset_for_tests() -> None:
     configures per test replaces them, and one that configures once keeps them.
     """
     clear_catalogue()
+    clear_access_logs()
     register_context_fields(())
     register_logger_root(DEFAULT_LOGGER_ROOT)
     reset_shutdown_reason()
     set_strict_fields(False)
 
 
-def assert_catalogue_complete(catalogue: type[EventCatalogue]) -> None:
+def assert_catalogue_complete(catalogue: type[EventCatalogue], *, access_logs: bool = True) -> None:
     """A missing slot, or one inheriting routing without an id of its own, cannot
     be caught by a type checker, so this is what moves the failure from boot into CI.
     """
-    missing = missing_events(catalogue)
+    missing = missing_events(catalogue, access_logs=access_logs)
     assert not missing, f"{catalogue.__name__} does not define required events: {', '.join(missing)}"
 
-    unset = unset_event_ids(catalogue)
+    unset = unset_event_ids(catalogue, access_logs=access_logs)
     assert not unset, f"{catalogue.__name__} declares events with no event id: {', '.join(unset)}"
 
 

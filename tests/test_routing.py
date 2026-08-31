@@ -39,7 +39,7 @@ def delivered(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
 def configure(loglevel: str = "INFO", logger_root: str = gflog.DEFAULT_LOGGER_ROOT) -> None:
     gflog.configure(
-        config=gflog.ConfigLogging(syslog_path="localhost:1514", application_id="routing-test"),
+        config=gflog.ConfigLogging(syslog_path="localhost:1514", application_id="routing-test", access_logs=True),
         loglevel=loglevel,
         catalogue=CompleteCatalogue,
         logger_root=logger_root,

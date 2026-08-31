@@ -27,7 +27,7 @@ TENANT_ID = gflog.ContextField(name="tenant_id", header="X-Tenant-Id")
 logger = logging.getLogger("app.service")
 
 
-def build_app(**middleware_options: object) -> FastAPI:
+def build_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         async with gflog.lifespan_logging(logger, version="1.2.3", config_path="/etc/app.conf"):
@@ -59,14 +59,14 @@ def build_app(**middleware_options: object) -> FastAPI:
         return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
     app.add_exception_handler(Exception, unhandled)
-    app.add_middleware(RequestContextMiddleware, **middleware_options)  # type: ignore[arg-type]
+    app.add_middleware(RequestContextMiddleware)
     return app
 
 
 @pytest.fixture(autouse=True)
 def configured() -> Iterator[None]:
     gflog.configure(
-        config=gflog.ConfigLogging(application_id="example-service", debug_logs_in_console=False),
+        config=gflog.ConfigLogging(application_id="example-service", debug_logs_in_console=False, access_logs=True),
         loglevel="info",
         catalogue=CompleteCatalogue,
         extra_context_fields=(TENANT_ID,),
@@ -115,12 +115,20 @@ class TestRequestLifecycle:
 
         assert [entry for entry in captured if entry.event_id == "100702"]
 
-    def test_access_logging_can_be_switched_off(self) -> None:
+    def test_no_access_record_is_logged_unless_the_configuration_enables_it(self) -> None:
+        gflog.configure(
+            config=gflog.ConfigLogging(application_id="example-service"),
+            loglevel="info",
+            catalogue=CompleteCatalogue,
+            extra_context_fields=(TENANT_ID,),
+        )
+
         with capture_records() as captured:
-            with TestClient(build_app(access_log=False)) as client:
+            with TestClient(build_app()) as client:
                 client.get("/resources")
 
         assert captured.for_event(CompleteCatalogue.ACCESS_REQUEST) == []
+        assert_event_emitted(captured, CompleteCatalogue.RESOURCE_CREATED)
 
 
 class TestStreamSeparation:
