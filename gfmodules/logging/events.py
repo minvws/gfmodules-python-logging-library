@@ -107,6 +107,13 @@ REQUIRED_EVENTS: tuple[str, ...] = (
     "ACCESS_REQUEST",
 )
 
+_ACCESS_EVENTS: frozenset[str] = frozenset({"ACCESS_REQUEST"})
+
+
+def _excused_events(access_logs: bool) -> frozenset[str]:
+    return frozenset() if access_logs else _ACCESS_EVENTS
+
+
 _strict_fields = False
 
 
@@ -197,8 +204,13 @@ class EventCatalogue:
         )
 
 
-def missing_events(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
-    return tuple(name for name in REQUIRED_EVENTS if not isinstance(getattr(catalogue, name, None), LogEvent))
+def missing_events(catalogue: type[EventCatalogue], *, access_logs: bool = True) -> tuple[str, ...]:
+    excused = _excused_events(access_logs)
+    return tuple(
+        name
+        for name in REQUIRED_EVENTS
+        if name not in excused and not isinstance(getattr(catalogue, name, None), LogEvent)
+    )
 
 
 _APP = LoggingStreams.APP
@@ -259,8 +271,11 @@ def declared_events(catalogue: type[EventCatalogue]) -> Iterator[tuple[str, LogE
                 yield name, value
 
 
-def unset_event_ids(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
-    return tuple(sorted(name for name, event in declared_events(catalogue) if not event.event_id))
+def unset_event_ids(catalogue: type[EventCatalogue], *, access_logs: bool = True) -> tuple[str, ...]:
+    excused = _excused_events(access_logs)
+    return tuple(
+        sorted(name for name, event in declared_events(catalogue) if not event.event_id and name not in excused)
+    )
 
 
 def reserved_field_names(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
@@ -277,12 +292,12 @@ def reserved_field_names(catalogue: type[EventCatalogue]) -> tuple[str, ...]:
     )
 
 
-def validate_catalogue(catalogue: type[EventCatalogue]) -> None:
-    missing = missing_events(catalogue)
+def validate_catalogue(catalogue: type[EventCatalogue], *, access_logs: bool = True) -> None:
+    missing = missing_events(catalogue, access_logs=access_logs)
     if missing:
         raise ValueError(f"{catalogue.__name__} does not define required events: {', '.join(missing)}")
 
-    unset = unset_event_ids(catalogue)
+    unset = unset_event_ids(catalogue, access_logs=access_logs)
     if unset:
         raise ValueError(f"{catalogue.__name__} declares events with no event id: {', '.join(unset)}. ")
 

@@ -55,7 +55,12 @@ from gfmodules.logging.loggers import (
     register_logger_root,
     warn_on_app_stream,
 )
-from gfmodules.logging.registry import active_catalogue, register_catalogue
+from gfmodules.logging.registry import (
+    access_logs_enabled,
+    active_catalogue,
+    register_access_logs,
+    register_catalogue,
+)
 from gfmodules.logging.streams import LoggingStreams
 
 __all__ = [
@@ -82,6 +87,7 @@ __all__ = [
     "PublicInspectFilter",
     "SiemFilter",
     "access_logger_name",
+    "access_logs_enabled",
     "active_catalogue",
     "active_logger_root",
     "bind_context",
@@ -95,6 +101,7 @@ __all__ = [
     "internal_logger_name",
     "lifespan_logging",
     "missing_events",
+    "register_access_logs",
     "register_catalogue",
     "register_logger_root",
     "reserved_field_names",
@@ -120,9 +127,10 @@ def configure(
     if level not in logging.getLevelNamesMapping():
         raise ValueError(f"invalid loglevel {level}")
 
-    validate_catalogue(catalogue)
+    validate_catalogue(catalogue, access_logs=config.access_logs)
     set_strict_fields(strict_fields)
     register_context_fields(extra_context_fields)
+    register_access_logs(config.access_logs)
     register_catalogue(catalogue)
     register_logger_root(logger_root)
     try:

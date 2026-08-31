@@ -30,6 +30,7 @@ from gfmodules.logging.middleware import (
     bind_request_context,
     restore_request_context,
 )
+from gfmodules.logging.registry import register_access_logs
 from tests.conftest import RecordingHandler
 from tests.helpers.catalogue import CompleteCatalogue
 
@@ -69,7 +70,8 @@ def build_app() -> FastAPI:
     return app
 
 
-def build_client(**options: Any) -> TestClient:
+def build_client(*, access_logs: bool = True, **options: Any) -> TestClient:
+    register_access_logs(access_logs)
     app = build_app()
     app.add_middleware(RequestContextMiddleware, **options)
     return TestClient(app, raise_server_exceptions=False)
@@ -221,12 +223,25 @@ class TestAccessLogging:
 
         assert records.with_event_id(ACCESS_EVENT_ID)[0].status_code is None  # type: ignore[attr-defined]
 
-    def test_can_be_switched_off(self, catalogue: type[CompleteCatalogue], records: RecordingHandler) -> None:
-        client = build_client(access_log=False)
+    def test_logs_nothing_until_the_configuration_asks_for_access_logs(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
+    ) -> None:
+        app = build_app()
+        app.add_middleware(RequestContextMiddleware)
+
+        TestClient(app).get("/ok")
+
+        assert records.with_event_id(ACCESS_EVENT_ID) == []
+
+    def test_follows_a_setting_registered_after_the_middleware_was_added(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
+    ) -> None:
+        client = build_client(access_logs=False)
+        register_access_logs(True)
 
         client.get("/ok")
 
-        assert records.with_event_id(ACCESS_EVENT_ID) == []
+        assert len(records.with_event_id(ACCESS_EVENT_ID)) == 1
 
 
 @pytest.fixture
@@ -359,6 +374,7 @@ class TestCorrelationIdExpected:
 
 class TestCatalogueResolution:
     def test_an_explicit_catalogue_is_used_without_registration(self, records: RecordingHandler) -> None:
+        register_access_logs(True)
         app = build_app()
         app.add_middleware(RequestContextMiddleware, catalogue=CompleteCatalogue)
 

@@ -16,5 +16,8 @@ class Settings(BaseModel):
             syslog_path=None,
             application_id="example-service",
             correlation_id_expected=True,
+            # This service logs a record per request; an application that does not
+            # leaves this off and never logs ACCESS_REQUEST.
+            access_logs=True,
         )
     )

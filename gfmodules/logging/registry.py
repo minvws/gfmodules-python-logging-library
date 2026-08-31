@@ -1,14 +1,15 @@
-"""The catalogue ``configure()`` registers, so wiring code does not have to
-thread one through every library component that logs.
+"""What ``configure()`` registers, so wiring code does not have to thread it
+through every library component that logs.
 """
 
 from gfmodules.logging.events import EventCatalogue, validate_catalogue
 
 _catalogue: type[EventCatalogue] | None = None
+_access_logs = False
 
 
 def register_catalogue(catalogue: type[EventCatalogue]) -> None:
-    validate_catalogue(catalogue)
+    validate_catalogue(catalogue, access_logs=access_logs_enabled())
     global _catalogue
     _catalogue = catalogue
 
@@ -26,3 +27,12 @@ def active_catalogue() -> type[EventCatalogue]:
 
 def resolve_catalogue(catalogue: type[EventCatalogue] | None) -> type[EventCatalogue]:
     return catalogue if catalogue is not None else active_catalogue()
+
+
+def register_access_logs(enabled: bool) -> None:
+    global _access_logs
+    _access_logs = enabled
+
+
+def access_logs_enabled() -> bool:
+    return _access_logs

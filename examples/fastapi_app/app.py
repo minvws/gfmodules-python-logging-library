@@ -81,7 +81,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         RequestContextMiddleware,
         correlation_id_expected=settings.logging.correlation_id_expected,
-        access_log=True,
         # capture_body_methods stays unset: no reason to log a create call's contents.
         trust_forwarded_for=settings.logging.trust_forwarded_for,
     )
