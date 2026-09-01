@@ -337,6 +337,75 @@ class TestLogEventCopies:
         assert event.fields == {}
 
 
+class TestAddFields:
+    def test_merges_into_a_stream_the_event_already_routes(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STARTED.add_fields({LoggingStreams.APP: ("region",)})
+
+        assert event.fields[LoggingStreams.APP] == ("version", "config_path", "region")
+
+    def test_the_declared_order_survives_a_merge(self) -> None:
+        inherited = DefaultEventCatalogue.SYS_APP_STARTED.fields[LoggingStreams.APP]
+
+        event = DefaultEventCatalogue.SYS_APP_STARTED.add_fields({LoggingStreams.APP: ("region",)})
+
+        assert event.fields[LoggingStreams.APP][: len(inherited)] == inherited
+
+    def test_adds_a_stream_the_event_did_not_route(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STARTED.add_fields({LoggingStreams.SIEM: ("version",)})
+
+        assert event.fields[LoggingStreams.SIEM] == ("version",)
+        assert event.fields[LoggingStreams.APP] == ("version", "config_path")
+
+    def test_names_the_allow_list_already_has_are_not_repeated(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STARTED.add_fields({LoggingStreams.APP: ("version", "region")})
+
+        assert event.fields[LoggingStreams.APP] == ("version", "config_path", "region")
+
+    def test_leaves_the_streams_it_was_not_given_alone(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STOPPED.add_fields({LoggingStreams.APP: ("uptime_seconds",)})
+
+        assert event.fields[LoggingStreams.SIEM] == DefaultEventCatalogue.SYS_APP_STOPPED.fields[LoggingStreams.SIEM]
+
+    def test_keeps_the_id_level_and_streams(self) -> None:
+        base = DefaultEventCatalogue.SYS_APP_STOPPED.with_id("100802")
+
+        event = base.add_fields({LoggingStreams.APP: ("uptime_seconds",)})
+
+        assert event.event_id == "100802"
+        assert event.level == base.level
+        assert event.streams == base.streams
+
+    def test_the_original_is_left_alone(self) -> None:
+        DefaultEventCatalogue.SYS_APP_STARTED.add_fields({LoggingStreams.APP: ("region",)})
+
+        assert DefaultEventCatalogue.SYS_APP_STARTED.fields[LoggingStreams.APP] == ("version", "config_path")
+
+    def test_nothing_to_add_is_the_event_itself(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STARTED
+
+        assert event.add_fields() is event
+        assert event.add_fields(None) is event
+
+    def test_an_empty_mapping_changes_no_routing(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STARTED.add_fields({})
+
+        assert event.fields == DefaultEventCatalogue.SYS_APP_STARTED.fields
+
+    def test_a_stream_is_allow_listed_without_being_routed_to(self) -> None:
+        event = DefaultEventCatalogue.SYS_APP_STARTED.add_fields({LoggingStreams.SIEM: ("version",)})
+
+        assert LoggingStreams.SIEM in event.fields
+        assert LoggingStreams.SIEM not in event.streams
+
+    def test_an_event_that_routed_everything_now_routes_an_allow_list(self) -> None:
+        unrouted = LogEvent("100610", logging.INFO, (LoggingStreams.APP,))
+
+        event = unrouted.add_fields({LoggingStreams.APP: ("resource_id",)})
+
+        assert unrouted_fields(unrouted, ["owner_id"]) == ()
+        assert unrouted_fields(event, ["owner_id"]) == ("owner_id",)
+
+
 class TestUnsetEventIds:
     def test_the_default_catalogue_supplies_no_ids(self) -> None:
         assert unset_event_ids(DefaultEventCatalogue) == tuple(sorted(REQUIRED_EVENTS))

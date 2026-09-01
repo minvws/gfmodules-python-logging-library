@@ -5,10 +5,11 @@ reject a subclass that leaves one unfilled. :func:`validate_catalogue` is the
 guard instead.
 """
 
+import dataclasses
 import logging
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Self
 
 from gfmodules.logging.context import ALWAYS_KEEP_FIELDS
 from gfmodules.logging.loggers import report_outside_root, within_root
@@ -78,21 +79,47 @@ class LogEvent:
         level: int | None = None,
         streams: tuple[LoggingStreams, ...] | None = None,
         fields: Mapping[LoggingStreams, tuple[str, ...]] | None = None,
-    ) -> "LogEvent":
+    ) -> Self:
         """A copy with the named attributes changed.
 
         An application overriding an inherited event states only what differs,
         so the library's routing stays one definition rather than a copy per
         application.
         """
-        return LogEvent(
+        return dataclasses.replace(
+            self,
             event_id=self.event_id if event_id is None else event_id,
             level=self.level if level is None else level,
             streams=self.streams if streams is None else streams,
             fields=self.fields if fields is None else fields,
         )
 
-    def with_id(self, event_id: str) -> "LogEvent":
+    def add_fields(
+        self,
+        fields: Mapping[LoggingStreams, tuple[str, ...]] | None = None,
+    ) -> Self:
+        """A copy carrying these fields on top of the ones already allow-listed.
+
+        Example::
+
+            event = LogEvent(
+                event_id="1234",
+                level=logging.INFO,
+                streams=(LoggingStreams.APP,),
+                fields={LoggingStreams.APP: ("resource_id",)},
+            )
+            new_event = event.add_fields(fields={LoggingStreams.APP: ("owner_id",)})
+            # new_event.fields now contains both "resource_id" and "owner_id" for the APP stream.
+        """
+        if not fields:
+            return self
+        merged = {**self.fields}
+        for stream, names in fields.items():
+            existing = merged.get(stream, ())
+            merged[stream] = existing + tuple(name for name in names if name not in existing)
+        return self.replace(fields=merged)
+
+    def with_id(self, event_id: str) -> Self:
         """This system's number for an event the library routes."""
         return self.replace(event_id=event_id)
 
