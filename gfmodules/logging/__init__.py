@@ -135,8 +135,11 @@ def configure(
     register_access_logs(config.access_logs)
     register_catalogue(catalogue, access_logs=config.access_logs)
     register_logger_root(logger_root)
+    # Built outside the try, so a rejected setting keeps its own error rather than
+    # being reported as a log server the process could not reach.
+    document = LogConfigBuilder(logging_config=config, loglevel=level).build()
     try:
-        dictConfig(LogConfigBuilder(logging_config=config, loglevel=level).build())
+        dictConfig(document)
     except ValueError as exc:
         if not config.syslog_path:
             raise

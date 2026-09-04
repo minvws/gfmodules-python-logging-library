@@ -77,20 +77,28 @@ class JsonFormatter(logging.Formatter):
 
 
 class PlainTextFormatter(logging.Formatter):
-    def __init__(self, stream: LoggingStreams | None = None) -> None:
+    def __init__(
+        self,
+        include_traces: bool = True,
+        stream: LoggingStreams | None = None,
+        stream_id: str | None = None,
+    ) -> None:
         super().__init__()
+        self.include_traces = include_traces
         self.stream = stream
+        self.stream_id = stream_id
 
     def format(self, record: logging.LogRecord) -> str:
         timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         event_id = getattr(record, "event_id", None) or "-"
-        base = f"{timestamp} {record.levelname:<8} {record.name} [{event_id}] {_sanitize_message(record.getMessage())}"
+        stream_tag = f" [{self.stream_id}]" if self.stream_id else ""
+        base = f"{timestamp}{stream_tag} {record.levelname:<8} {record.name} [{event_id}] {_sanitize_message(record.getMessage())}"
 
         data = {**collect_context(), **_collect_extras(record)}
         pairs = [f"{key}={value}" for key, value in _allowed_on(record, self.stream, data).items()]
 
         out = base if not pairs else f"{base} {' '.join(pairs)}"
 
-        if record.exc_info:
+        if record.exc_info and self.include_traces:
             out = f"{out}\n{self.formatException(record.exc_info)}"
         return out
