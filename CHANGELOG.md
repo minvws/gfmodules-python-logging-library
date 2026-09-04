@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Changed (breaking)
+
+- The console is now plain text only; JSON is the syslog wire format alone. The
+  `json`/`json_traces`/`plain` formatters and the `console` handler are gone, replaced
+  by `console_app`, `console_siem` and `console_debug`, one per selected stream.
+- `debug_logs_in_console` is removed; use `console_streams=["debug"]` instead.
+- The console carries the SIEM stream by default (previously app only), so an
+  app-and-SIEM event now prints one line per stream. Set `console_streams=["app"]` for
+  the old behavior.
+- Only the debug stream is bound to the root logger, so records logged outside the
+  application's logger tree no longer reach stdout by default.
+
+### Added
+
+- `console_streams` on `ConfigLogging` selects which streams (`app`, `siem`, `debug`)
+  reach stdout as readable text. An empty list silences stdout; an unknown stream name
+  fails at boot.
+- `include_traces` now also controls tracebacks in the console formatters.
+
+### Fixed
+
+- A rejected logging setting is no longer misreported as an unreachable log server.
+
 ## 0.2.0 - 2026-09-01
 
 ### Changed (breaking)

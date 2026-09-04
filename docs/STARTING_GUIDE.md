@@ -130,7 +130,7 @@ application's own config module makes every import of it from there fail.
 | `syslog_path` | `host:port`; unset means console only |
 | `application_id` | stamped on every JSON record so the log server can tell applications apart; omitted entirely when unset, so set it wherever `syslog_path` is set |
 | `include_traces` | include tracebacks in the console stream |
-| `debug_logs_in_console` | human-readable console output instead of JSON |
+| `console_streams` | which streams reach stdout, from `app`, `siem` and `debug`; defaults to `["app", "siem"]`, and empty silences stdout |
 | `correlation_id_expected` | log when a request arrives without a correlation id |
 | `trust_forwarded_for` | read the client ip from `X-Forwarded-For`; only where a proxy rewrites it |
 | `access_logs` | log a record per request; **off by default**, so nothing is access-logged until an application asks |
@@ -174,9 +174,17 @@ a stream that would otherwise have stayed quietly empty reports itself instead.
 
 ### What reaches the console
 
-With `debug_logs_in_console = False` the console carries the app stream only, so
-a SIEM-only event is not printed there. That is intended, but during development
-it reads as "nothing was logged": check the stream, not the terminal.
+The console is plain text; JSON goes to syslog. By default both the app and SIEM
+streams reach stdout, each as a separate line with its own field allow-list.
+
+```python
+ConfigLogging(syslog_path="log-server:5514", console_streams=["app"])  # app only
+ConfigLogging(syslog_path="log-server:5514", console_streams=[])       # silence stdout
+```
+
+An empty list silences stdout, leaving Python's own WARNING-and-above handler
+on stderr. Silencing stdout with no `syslog_path` set leaves no handlers at all.
+
 `configure()` builds its dict config through `LogConfigBuilder`, which is
 exported for an application that needs to inspect or extend it.
 
