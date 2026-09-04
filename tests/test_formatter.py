@@ -208,10 +208,16 @@ JSON_CASES: dict[str, tuple[JsonFormatter, dict[str, Any], str]] = {
     ),
 }
 
+PLAIN_APP_LINE_WITH_TAG = (
+    "2026-04-12T13:20:00Z [app] ERROR    app.health [100600] Component database is unhealthy "
+    "request_id=req-1 ip=10.0.0.7 client_trace_id=trace-1 correlation_id=corr-1 "
+    "component=database status=unhealthy error_detail=connection refused"
+)
+
 PLAIN_CASES: dict[str, tuple[PlainTextFormatter, dict[str, Any], str]] = {
     "unrouted": (PlainTextFormatter(), {}, PLAIN_LINE),
     "with_exc": (PlainTextFormatter(), {"with_exc": True}, f"{PLAIN_LINE}\n{TRACEBACK}"),
-    "app_stream": (PlainTextFormatter(stream=LoggingStreams.APP), {}, PLAIN_APP_LINE),
+    "app_stream": (PlainTextFormatter(stream=LoggingStreams.APP, stream_id="app"), {}, PLAIN_APP_LINE_WITH_TAG),
 }
 
 
@@ -302,6 +308,12 @@ class TestTraceInclusion:
         out = json.loads(JsonFormatter(include_traces=True).format(record))
 
         assert out["message"]["stack_info"].startswith("Stack (most recent call last):")
+
+    def test_plain_output_keeps_the_traceback_by_default(self) -> None:
+        assert format_case(PlainTextFormatter(), with_exc=True) == f"{PLAIN_LINE}\n{TRACEBACK}"
+
+    def test_plain_output_omits_the_traceback_when_traces_are_disabled(self) -> None:
+        assert format_case(PlainTextFormatter(include_traces=False), with_exc=True) == PLAIN_LINE
 
     def test_non_serialisable_values_fall_back_to_their_string_form(self) -> None:
         record = make_record()

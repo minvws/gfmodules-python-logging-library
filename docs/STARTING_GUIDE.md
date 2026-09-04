@@ -130,7 +130,7 @@ application's own config module makes every import of it from there fail.
 | `syslog_path` | `host:port`; unset means console only |
 | `application_id` | stamped on every JSON record so the log server can tell applications apart; omitted entirely when unset, so set it wherever `syslog_path` is set |
 | `include_traces` | include tracebacks in the console stream |
-| `debug_logs_in_console` | human-readable console output instead of JSON |
+| `console_streams` | which streams reach stdout, from `app`, `siem` and `debug`; defaults to `["app", "siem"]`, and empty silences stdout |
 | `correlation_id_expected` | log when a request arrives without a correlation id |
 | `trust_forwarded_for` | read the client ip from `X-Forwarded-For`; only where a proxy rewrites it |
 | `access_logs` | log a record per request; **off by default**, so nothing is access-logged until an application asks |
@@ -174,9 +174,53 @@ a stream that would otherwise have stayed quietly empty reports itself instead.
 
 ### What reaches the console
 
-With `debug_logs_in_console = False` the console carries the app stream only, so
-a SIEM-only event is not printed there. That is intended, but during development
-it reads as "nothing was logged": check the stream, not the terminal.
+The console is plain text, always. JSON is the syslog wire format, so the two
+never compete for stdout and an application can run both at once: set
+`syslog_path` for the log server and leave the console for whoever is watching
+the terminal.
+
+By default the console carries the app and SIEM streams, so a SIEM-only event is
+visible in the terminal rather than reading as "nothing was logged". Name the
+streams to carry something else:
+
+```python
+ConfigLogging(syslog_path="log-server:5514", console_streams=["app"])
+```
+
+Each selected stream gets its own handler and prints its own line, tagged with
+the stream name, under that stream's field allow-list. Naming a stream twice
+still yields one handler, and a name that is not a stream fails at boot.
+
+An event routed to more than one selected stream therefore prints once per
+stream. On the default that means an app-and-SIEM event appears twice, and the
+two lines differ: each shows only the fields its own stream allows.
+
+```text
+2026-09-04T19:40:44Z [app]  INFO app.service [100607] resource created resource_id=12345 owner_id=o-1 created_by=alice
+2026-09-04T19:40:44Z [siem] INFO app.service [100607] resource created resource_id=12345
+```
+
+Drop back to `console_streams=["app"]` where that repetition is not worth the
+visibility.
+
+An empty list is a choice rather than an omission: it silences stdout, which is
+what a service wants when the log server is the only reader.
+
+```python
+ConfigLogging(syslog_path="log-server:5514", console_streams=[])
+```
+
+Silencing stdout with no `syslog_path` set leaves the application with no
+handlers at all, and Python's own last-resort handler then prints WARNING and
+above to stderr. Configure one or the other unless that is what you want.
+
+`debug` is the unrouted view: it is unfiltered, so it carries records from
+outside the application's logger tree too, and it repeats what `app` already
+printed. Pick one of the two unless you are chasing something the app stream
+does not show. Note that `debug` prints DEBUG-level records only when the
+process is running at `loglevel = "DEBUG"`; the handler does not lower the
+logger's own level.
+
 `configure()` builds its dict config through `LogConfigBuilder`, which is
 exported for an application that needs to inspect or extend it.
 

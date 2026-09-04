@@ -4,6 +4,11 @@
       "line_length": 120,
       "code_blocks": false,
       "tables": false
+    },
+    // A changelog repeats "Added" and "Fixed" under every release, so headings
+    // only need to be unique among their siblings.
+    "MD024": {
+      "siblings_only": true
     }
   }
 }

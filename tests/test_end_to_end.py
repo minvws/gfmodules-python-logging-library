@@ -66,7 +66,7 @@ def build_app() -> FastAPI:
 @pytest.fixture(autouse=True)
 def configured() -> Iterator[None]:
     gflog.configure(
-        config=gflog.ConfigLogging(application_id="example-service", debug_logs_in_console=False, access_logs=True),
+        config=gflog.ConfigLogging(application_id="example-service", access_logs=True),
         loglevel="info",
         catalogue=CompleteCatalogue,
         extra_context_fields=(TENANT_ID,),
@@ -198,13 +198,48 @@ class TestConfigure:
         with pytest.raises(ValueError, match="does not define required events"):
             gflog.configure(config=config, loglevel="INFO", catalogue=IncompleteCatalogue)
 
-    def test_installs_handlers_that_emit_the_agreed_json_shape(self) -> None:
-        stream = logging.getLogger().handlers[0].stream  # type: ignore[attr-defined]
-        assert stream is not None
-
+    def _app_record(self) -> logging.LogRecord:
         record = logging.LogRecord("app.x", logging.INFO, "", 1, "hello", (), None)
         record.event_id = "100601"
-        payload = json.loads(logging.getLogger().handlers[0].format(record))
+        record.stream = [LoggingStreams.APP]
+        return record
+
+    def _handler(self, name: str) -> logging.Handler:
+        return next(h for h in logging.getLogger("app").handlers if h.name == name)
+
+    def test_installs_a_console_handler_that_emits_plain_text_rather_than_json(self) -> None:
+        formatted = self._handler("console_app").format(self._app_record())
+
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(formatted)
+        assert "INFO" in formatted
+        assert "[100601]" in formatted
+
+    def test_installs_syslog_handlers_that_emit_the_agreed_json_shape(self) -> None:
+        gflog.configure(
+            config=gflog.ConfigLogging(
+                application_id="example-service",
+                syslog_path="127.0.0.1:5514",
+                access_logs=True,
+            ),
+            loglevel="info",
+            catalogue=CompleteCatalogue,
+        )
+        try:
+            payload = json.loads(self._handler("syslog_app").format(self._app_record()))
+        finally:
+            for handler in list(logging.getLogger("app").handlers):
+                handler.close()
 
         assert payload["application_id"] == "example-service"
+        assert payload["stream_id"] == "app"
         assert set(payload) >= {"event_id", "timestamp", "level", "event_description", "source", "message"}
+
+    def test_an_invalid_console_stream_is_not_reported_as_an_unreachable_log_server(self) -> None:
+        config = gflog.ConfigLogging(syslog_path="127.0.0.1:5514", console_streams=["nonsense"])
+
+        with pytest.raises(ValueError) as raised:
+            gflog.configure(config=config, loglevel="INFO", catalogue=CompleteCatalogue)
+
+        assert "unknown console_streams" in str(raised.value)
+        assert "could not reach the log server" not in str(raised.value)

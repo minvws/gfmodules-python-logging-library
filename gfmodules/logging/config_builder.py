@@ -7,6 +7,8 @@ from gfmodules.logging.formatter import JsonFormatter, PlainTextFormatter
 from gfmodules.logging.loggers import active_logger_root
 from gfmodules.logging.streams import LoggingStreams
 
+CONSOLE_STREAMS = ("app", "siem", "debug")
+
 
 def _at_least(loglevel: str, floor: int) -> str:
     numeric = logging.getLevelNamesMapping().get(loglevel.upper())
@@ -24,7 +26,7 @@ class LogConfigBuilder:
         self.loglevel = loglevel
         self.logging_config = logging_config
 
-    def _syslog_handler(self, path: str, formatter: str = "json", filters: list[str] | None = None) -> dict[str, Any]:
+    def _syslog_handler(self, path: str, formatter: str, filters: list[str] | None = None) -> dict[str, Any]:
         host, port_str = path.rsplit(":", 1)
         cfg: dict[str, Any] = {
             "class": "logging.handlers.SysLogHandler",
@@ -36,22 +38,7 @@ class LogConfigBuilder:
         return cfg
 
     def build(self) -> dict[str, Any]:
-        if self.logging_config.debug_logs_in_console:
-            console: dict[str, Any] = {
-                "class": "logging.StreamHandler",
-                "level": "DEBUG",
-                "formatter": "plain",
-                "stream": "ext://sys.stdout",
-            }
-        else:
-            console = {
-                "class": "logging.StreamHandler",
-                "level": self.loglevel,
-                "formatter": "json_traces" if self.logging_config.include_traces else "json",
-                "filters": ["app_filter"],
-                "stream": "ext://sys.stdout",
-            }
-
+        traces = self.logging_config.include_traces
         conf: dict[str, Any] = {
             "version": 1,
             "disable_existing_loggers": False,
@@ -61,14 +48,6 @@ class LogConfigBuilder:
                 "public_inspect_filter": {"()": PublicInspectFilter},
             },
             "formatters": {
-                "json": {
-                    "()": JsonFormatter,
-                    "include_traces": False,
-                },
-                "json_traces": {
-                    "()": JsonFormatter,
-                    "include_traces": True,
-                },
                 # Only a formatter bound to a stream applies that stream's field
                 # allow-list, and its stream_id is how the log server splits the
                 # shared syslog channel again.
@@ -95,26 +74,40 @@ class LogConfigBuilder:
                     "include_traces": True,
                     "stream_id": "debug",
                 },
-                "plain": {
+                # The console is plain text only, so these are the only formatters
+                # ``include_traces`` still has anything to say about.
+                "plain_app": {
                     "()": PlainTextFormatter,
+                    "include_traces": traces,
+                    "stream": LoggingStreams.APP,
+                    "stream_id": "app",
+                },
+                "plain_siem": {
+                    "()": PlainTextFormatter,
+                    "include_traces": traces,
+                    "stream": LoggingStreams.SIEM,
+                    "stream_id": "siem",
+                },
+                "plain_debug": {
+                    "()": PlainTextFormatter,
+                    "include_traces": traces,
+                    "stream_id": "debug",
                 },
             },
-            "handlers": {
-                "console": console,
-            },
+            "handlers": {},
             "loggers": {
                 active_logger_root(): {
-                    "handlers": ["console"],
+                    "handlers": [],
                     "level": self.loglevel,
                     "propagate": False,
                 },
                 "uvicorn": {
-                    "handlers": ["console"],
+                    "handlers": [],
                     "level": self.loglevel,
                     "propagate": False,
                 },
                 "uvicorn.error": {
-                    "handlers": ["console"],
+                    "handlers": [],
                     "level": self.loglevel,
                     "propagate": False,
                 },
@@ -131,7 +124,7 @@ class LogConfigBuilder:
                     "propagate": True,
                 },
             },
-            "root": {"handlers": ["console"], "level": self.loglevel},
+            "root": {"handlers": [], "level": self.loglevel},
         }
 
         if self.logging_config.application_id:
@@ -139,9 +132,59 @@ class LogConfigBuilder:
                 if formatter["()"] is JsonFormatter:
                     formatter["application_id"] = self.logging_config.application_id
 
+        self._add_console_streams(conf)
         self._add_log_handlers(conf)
 
         return conf
+
+    def _selected_console_streams(self) -> list[str]:
+        """One stdout handler per stream, so a stream named twice is still listed once.
+
+        The default lives on ``ConfigLogging.console_streams``, so an empty selection
+        is taken at face value: it asks for a silent stdout.
+        """
+        unknown = [name for name in self.logging_config.console_streams if name not in CONSOLE_STREAMS]
+        if unknown:
+            raise ValueError(f"unknown console_streams {unknown}, choose from {list(CONSOLE_STREAMS)}")
+
+        return list(dict.fromkeys(self.logging_config.console_streams))
+
+    def _add_console_streams(self, conf: dict[str, Any]) -> None:
+        app_logger_handlers = conf["loggers"][active_logger_root()]["handlers"]
+        uvicorn_handlers = conf["loggers"]["uvicorn"]["handlers"]
+        uvicorn_error_handlers = conf["loggers"]["uvicorn.error"]["handlers"]
+        root_handlers = conf["root"]["handlers"]
+
+        bindings: dict[str, tuple[str, str | None, str, list[list[str]]]] = {
+            "app": (
+                "plain_app",
+                "app_filter",
+                self.loglevel,
+                [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers],
+            ),
+            "siem": ("plain_siem", "siem_filter", self.loglevel, [app_logger_handlers]),
+            "debug": (
+                "plain_debug",
+                None,
+                "DEBUG",
+                [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers, root_handlers],
+            ),
+        }
+
+        for stream_name in self._selected_console_streams():
+            formatter, filter_name, level, logger_handler_lists = bindings[stream_name]
+            handler_name = f"console_{stream_name}"
+            handler: dict[str, Any] = {
+                "class": "logging.StreamHandler",
+                "level": level,
+                "formatter": formatter,
+                "stream": "ext://sys.stdout",
+            }
+            if filter_name:
+                handler["filters"] = [filter_name]
+            conf["handlers"][handler_name] = handler
+            for logger_handlers in logger_handler_lists:
+                logger_handlers.append(handler_name)
 
     def _add_log_handlers(self, conf: dict[str, Any]) -> None:
         path = self.logging_config.syslog_path
