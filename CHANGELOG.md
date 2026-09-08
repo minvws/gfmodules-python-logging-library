@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 - 2026-09-08
+
+### Added
+
+- `gfmodules.logging.ini.split_comma_separated()` builds a pydantic
+  `mode="before"` validator that splits a comma-separated INI value into a
+  list, for an application whose own config loader reads INI. Opt-in per
+  field; `ConfigLogging` itself stays plain `list[str]`.
+
 ## 0.3.0 - 2026-09-07
 
 ### Changed (breaking)

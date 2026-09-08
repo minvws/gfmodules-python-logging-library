@@ -1,6 +1,6 @@
 [project]
 name = "gfmodules-python-logging-library"
-version = "0.3.0"
+version = "0.3.1"
 description = "Provides logging utilities for GFModules Python projects."
 license = "EUPL-1.2"
 authors = [{ name = "Ministerie van Volksgezondheid, Welzijn en Sport" }]
