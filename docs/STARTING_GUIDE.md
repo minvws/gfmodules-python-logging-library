@@ -152,6 +152,36 @@ with its records going nowhere. The raised error names `syslog_path` and the
 value it was given. Point it at a host reachable from wherever the process runs,
 which for a container service name means from inside the compose network.
 
+### Loading list settings from INI files
+
+`console_streams` is `list[str]`; pydantic does not turn a plain string into a
+list, so a `ConfigLogging` populated from an INI file (where every value is a
+string) needs the setting to arrive already split. An application loading its
+own config from INI opts the field in explicitly:
+
+```python
+from gfmodules.logging import ConfigLogging as GFConfigLogging
+from gfmodules.logging.ini import split_comma_separated
+from pydantic import field_validator
+
+class ConfigLogging(GFConfigLogging):
+    _split_console_streams = field_validator("console_streams", mode="before")(
+        split_comma_separated()
+    )
+```
+
+`split_comma_separated` takes each stripped item through `item_type` (`str` by
+default), so an application's own comma-separated INI setting can reuse it too:
+
+```python
+_split_retry_backoff = field_validator("retry_backoff", mode="before")(
+    split_comma_separated(float)
+)
+```
+
+`ConfigLogging` itself stays plain `list[str]`, agnostic to where its data
+comes from — this is opt-in per application, not automatic.
+
 ### The logger tree
 
 The stream handlers are attached to one logger tree, named `app` by default.
