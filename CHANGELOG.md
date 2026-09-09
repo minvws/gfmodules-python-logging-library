@@ -9,6 +9,16 @@
   the authorization scope granted to the calling client, so a service can see
   which scope a caller acted under without declaring anything itself.
 
+### Changed (breaking)
+
+- `access_logs` on `ConfigLogging` now defaults to `True` instead of `False`,
+  and `DefaultEventCatalogue.ACCESS_REQUEST` now carries the default event id
+  `"100"` instead of an unset one. An application that adds
+  `RequestContextMiddleware` and has not touched either setting now gets an
+  access record per request without further configuration; set
+  `access_logs=False` to opt back out, and override `ACCESS_REQUEST`'s id with
+  `.replace(event_id=...)` where a system's own numbering differs.
+
 ## 0.3.1 - 2026-09-08
 
 ### Added

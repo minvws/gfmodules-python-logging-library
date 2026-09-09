@@ -115,9 +115,9 @@ class TestRequestLifecycle:
 
         assert [entry for entry in captured if entry.event_id == "100702"]
 
-    def test_no_access_record_is_logged_unless_the_configuration_enables_it(self) -> None:
+    def test_no_access_record_is_logged_once_the_configuration_disables_it(self) -> None:
         gflog.configure(
-            config=gflog.ConfigLogging(application_id="example-service"),
+            config=gflog.ConfigLogging(application_id="example-service", access_logs=False),
             loglevel="info",
             catalogue=CompleteCatalogue,
             extra_context_fields=(TENANT_ID,),

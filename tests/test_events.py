@@ -407,14 +407,14 @@ class TestAddFields:
 
 
 class TestUnsetEventIds:
-    def test_the_default_catalogue_supplies_no_ids(self) -> None:
-        assert unset_event_ids(DefaultEventCatalogue) == tuple(sorted(REQUIRED_EVENTS))
+    def test_the_default_catalogue_leaves_every_id_but_access_request_unset(self) -> None:
+        assert unset_event_ids(DefaultEventCatalogue) == tuple(sorted(set(REQUIRED_EVENTS) - {"ACCESS_REQUEST"}))
 
     def test_validate_rejects_a_catalogue_that_leaves_one_unfilled(self) -> None:
         class Log(DefaultEventCatalogue):
             SYS_APP_STARTED = DefaultEventCatalogue.SYS_APP_STARTED.with_id("100801")
 
-        with pytest.raises(ValueError, match="ACCESS_REQUEST"):
+        with pytest.raises(ValueError, match="SYS_APP_STOPPED"):
             validate_catalogue(Log)
 
     def test_the_error_points_at_the_way_out(self) -> None:
@@ -439,13 +439,13 @@ class SystemIdsFilledWithoutAccess(DefaultEventCatalogue):
     SYS_MISSING_CORRELATION_ID = DefaultEventCatalogue.SYS_MISSING_CORRELATION_ID.with_id("100806")
 
 
-class TestAccessRequestIsRequiredOnlyWhereAccessIsLogged:
-    def test_an_unnumbered_access_event_passes_when_access_logging_is_off(self) -> None:
+class TestAccessRequestDefaultsWithoutRequiringConfiguration:
+    def test_a_default_catalogue_subclass_needs_no_access_request_id_of_its_own(self) -> None:
         validate_catalogue(SystemIdsFilledWithoutAccess, access_logs=False)
+        validate_catalogue(SystemIdsFilledWithoutAccess, access_logs=True)
 
-    def test_the_same_catalogue_is_rejected_once_access_logging_is_on(self) -> None:
-        with pytest.raises(ValueError, match="ACCESS_REQUEST"):
-            validate_catalogue(SystemIdsFilledWithoutAccess, access_logs=True)
+    def test_it_inherits_the_librarys_default_id(self) -> None:
+        assert SystemIdsFilledWithoutAccess.ACCESS_REQUEST.event_id == DefaultEventCatalogue.ACCESS_REQUEST.event_id
 
     def test_an_absent_access_event_is_not_missing_when_access_logging_is_off(self) -> None:
         class Log(EventCatalogue):
