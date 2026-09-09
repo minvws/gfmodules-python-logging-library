@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `scope` is a new standard context field, extracted from the `X-GF-Scope`
+  header and always kept across every stream on every event. Carries
+  the authorization scope granted to the calling client, so a service can see
+  which scope a caller acted under without declaring anything itself.
+
 ## 0.3.1 - 2026-09-08
 
 ### Added
