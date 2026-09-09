@@ -281,7 +281,7 @@ class DefaultEventCatalogue(EventCatalogue):
     )
     SYS_MISSING_CORRELATION_ID = LogEvent(UNSET_EVENT_ID, logging.ERROR, (_APP,), {_APP: ("endpoint", "method")})
     ACCESS_REQUEST = LogEvent(
-        UNSET_EVENT_ID,
+        "100",
         logging.INFO,
         (_APP,),
         {_APP: ("endpoint", "method", "status_code", "duration_ms", "body", "body_truncated")},
