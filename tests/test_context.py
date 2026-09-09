@@ -227,7 +227,7 @@ class TestStandardFields:
         assert "ip" not in extract_context({"X-Forwarded-For": "203.0.113.7"})
 
     def test_the_always_kept_fields_are_the_correlation_metadata(self) -> None:
-        assert ALWAYS_KEEP_FIELDS == {"request_id", "ip", "user_agent", "client_trace_id", "correlation_id"}
+        assert ALWAYS_KEEP_FIELDS == {"request_id", "ip", "user_agent", "client_trace_id", "correlation_id", "scope"}
 
     def test_the_user_agent_is_read_from_its_header(self) -> None:
         user_agent = next(field for field in STANDARD_FIELDS if field.name == "user_agent")

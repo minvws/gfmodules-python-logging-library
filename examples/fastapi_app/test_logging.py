@@ -49,6 +49,24 @@ class TestRequestContext:
         assert [entry for entry in captured if entry.event_id == "100710"]
 
 
+class TestScope:
+    def test_the_callers_scope_reaches_every_stream_on_every_event(self) -> None:
+        with capture_stream(LoggingStreams.SIEM) as siem:
+            with TestClient(create_app()) as client:
+                client.post("/resources", json=RESOURCE, headers={"x-gf-scope": "resources:write"})
+
+        created = next(message for message in siem if message.get("resource_id") == "r-1")
+        assert created["scope"] == "resources:write"
+
+    def test_the_scope_is_absent_when_the_caller_sends_none(self) -> None:
+        with capture_records() as captured:
+            with TestClient(create_app()) as client:
+                client.post("/resources", json=RESOURCE)
+
+        entry = assert_event_emitted(captured, Log.RESOURCE_CREATED, resource_id="r-1")
+        assert "scope" not in entry.message
+
+
 class TestStreamSeparation:
     def test_siem_sees_the_resource_id_and_nothing_else(self) -> None:
         with capture_stream(LoggingStreams.SIEM) as siem:

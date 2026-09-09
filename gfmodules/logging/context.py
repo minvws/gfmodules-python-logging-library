@@ -21,6 +21,7 @@ CLIENT_TRACE_ID_HEADER = "X-Client-Trace-ID"
 CORRELATION_ID_HEADER = "X-GF-Correlation-ID"
 CLIENT_IP_HEADER = "X-Forwarded-For"
 USER_AGENT_HEADER = "User-Agent"
+SCOPE_HEADER = "X-GF-Scope"
 
 _SAFE_HEADER_VALUE = re.compile(r"[^a-zA-Z0-9\-_]")
 _MAX_HEADER_LENGTH = 64
@@ -56,6 +57,7 @@ CLIENT_TRACE_ID = ContextField(name="client_trace_id", header=CLIENT_TRACE_ID_HE
 CORRELATION_ID = ContextField(name="correlation_id", header=CORRELATION_ID_HEADER)
 ENDPOINT = ContextField(name="endpoint", header=None)
 METHOD = ContextField(name="method", header=None)
+SCOPE = ContextField(name="scope", header=SCOPE_HEADER, sanitizer=sanitize_free_text)
 
 # Order matters: it is the order these keys appear in every emitted record.
 STANDARD_FIELDS: tuple[ContextField, ...] = (
@@ -66,11 +68,12 @@ STANDARD_FIELDS: tuple[ContextField, ...] = (
     CORRELATION_ID,
     ENDPOINT,
     METHOD,
+    SCOPE,
 )
 
 #: Correlation metadata every stream keeps, whatever an event's routing says.
 ALWAYS_KEEP_FIELDS: frozenset[str] = frozenset(
-    {REQUEST_ID.name, IP.name, USER_AGENT.name, CLIENT_TRACE_ID.name, CORRELATION_ID.name}
+    {REQUEST_ID.name, IP.name, USER_AGENT.name, CLIENT_TRACE_ID.name, CORRELATION_ID.name, SCOPE.name}
 )
 
 _fields: tuple[ContextField, ...] = STANDARD_FIELDS
