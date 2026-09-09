@@ -22,7 +22,6 @@ class Log(Base):
     # apart by level and by shutdown_reason.
     SYS_APP_CRASHED = Base.SYS_APP_CRASHED.with_id("100602")
     SYS_UNHANDLED_EXCEPTION = Base.SYS_UNHANDLED_EXCEPTION.with_id("100604")
-    ACCESS_REQUEST = Base.ACCESS_REQUEST.with_id("094500")
 
     # replace() where more than the id differs: this application reports a
     # missing correlation id to SIEM as well.

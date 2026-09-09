@@ -8,7 +8,7 @@ class ConfigLogging(BaseModel):
     include_traces: bool = Field(default=True)
     correlation_id_expected: bool = Field(default=False)
     # Whether to include access logs per request.
-    access_logs: bool = Field(default=False)
+    access_logs: bool = Field(default=True)
     # Only enable this where a proxy rewrites X-Forwarded-For; anywhere else the caller might set it.
     trust_forwarded_for: bool = Field(default=False)
     # Which streams reach stdout as readable text, from "app", "siem" and "debug".

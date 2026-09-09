@@ -28,9 +28,6 @@ class Log(Base):
     SYS_APP_CRASHED = Base.SYS_APP_CRASHED.with_id("100602")
     SYS_UNHANDLED_EXCEPTION = Base.SYS_UNHANDLED_EXCEPTION.with_id("100604")
     SYS_MISSING_CORRELATION_ID = Base.SYS_MISSING_CORRELATION_ID.with_id("100606")
-    # Only where the application logs access: with access_logs off, this one is
-    # not demanded and may be left unnumbered.
-    ACCESS_REQUEST = Base.ACCESS_REQUEST.with_id("094500")
 
     # This application's own events.
     RESOURCE_CREATED = LogEvent(
@@ -65,7 +62,7 @@ will not reach it.
 An id left unset fails in `configure()`, naming the slots:
 
 ```text
-ValueError: Log declares events with no event id: ACCESS_REQUEST, SYS_APP_STARTED. ...
+ValueError: Log declares events with no event id: SYS_APP_STARTED, SYS_APP_STOPPED. ...
 ```
 
 Subclass `EventCatalogue` instead to start from nothing, declaring routing as
@@ -133,18 +130,18 @@ application's own config module makes every import of it from there fail.
 | `console_streams` | which streams reach stdout, from `app`, `siem` and `debug`; defaults to `["app", "siem"]`, and empty silences stdout |
 | `correlation_id_expected` | log when a request arrives without a correlation id |
 | `trust_forwarded_for` | read the client ip from `X-Forwarded-For`; only where a proxy rewrites it |
-| `access_logs` | log a record per request; **off by default**, so nothing is access-logged until an application asks |
+| `access_logs` | log a record per request; **on by default** once `RequestContextMiddleware` is added (see step 3) |
 
 `configure()` validates the catalogue, so a missing required event, or one
 declaring a reserved field name, fails at boot rather than the first time the
 library needs it.
 
-With `access_logs` off, `ACCESS_REQUEST` is no longer part of that contract:
-an application that has no access logging duty declares no id for it, and
-`RequestContextMiddleware` logs nothing per request. Turning the setting on
-without numbering `ACCESS_REQUEST` fails at boot, naming the slot. Applications
-whose CI calls `assert_catalogue_complete` pass `access_logs=False` there too,
-so the check matches the configuration.
+`ACCESS_REQUEST` already carries a default id (`"100"`) inherited from
+`DefaultEventCatalogue`, so it needs no numbering of its own to satisfy that
+contract. An application that has no access logging duty sets `access_logs=False`
+to opt out; `RequestContextMiddleware` then logs nothing per request. Applications
+whose CI calls `assert_catalogue_complete` pass the same `access_logs` value
+there, so the check matches the configuration.
 
 A `syslog_path` the process cannot resolve or connect to is also fatal at boot,
 and deliberately so: an application under an audit obligation must not run on
@@ -237,9 +234,13 @@ Every event logged while a request is being handled picks up the request id,
 client ip, user agent, endpoint, method and correlation metadata automatically,
 so call sites never pass them explicitly.
 
-**Access records are not logged unless you ask.** The middleware logs one per
-request only where `access_logs` is set in `ConfigLogging`; without it the
-context binding above still happens, and nothing else does.
+**Access records need this middleware, not just `configure()`.** `access_logs`
+defaults to `True` in `ConfigLogging`, but that only decides whether *this*
+middleware logs a record per request once it is in place, adding the
+middleware itself is still a step of its own. Without it, request context
+binding never happens and no event, access or otherwise, picks up the request
+id, client ip or endpoint. Set `access_logs=False` to opt an application out
+even with the middleware added.
 
 **`configure()` has to run before this.** The middleware reads the setting once,
 when it is built, and holds it for the life of the application. Added before

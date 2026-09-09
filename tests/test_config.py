@@ -11,8 +11,8 @@ def test_defaults_match_the_pre_extraction_behaviour() -> None:
     assert config.correlation_id_expected is False
 
 
-def test_access_logging_is_off_until_an_application_asks_for_it() -> None:
-    assert ConfigLogging().access_logs is False
+def test_access_logging_is_on_unless_an_application_opts_out() -> None:
+    assert ConfigLogging().access_logs is True
 
 
 def test_an_empty_console_selection_is_kept_rather_than_read_as_the_default() -> None:
