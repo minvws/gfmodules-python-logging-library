@@ -44,8 +44,11 @@ jobs:
         with:
           python_version: "3.14"
 
-      - name: Lint
-        run: make POETRY=true lint
+      - name: Lint (ruff check)
+        run: poetry run ruff check --select E4,E7,E9,F,I,Q
+
+      - name: Lint (ruff format)
+        run: poetry run ruff format --diff
 
   type-check:
     name: Check static types
@@ -61,8 +64,8 @@ jobs:
         with:
           python_version: "3.14"
 
-      - name: Check static types
-        run: make POETRY=true type-check
+      - name: Check static types (mypy)
+        run: poetry run mypy gfmodules tests examples
 
   safety-check:
     name: Scan packages for vulnerabilities
@@ -78,8 +81,8 @@ jobs:
         with:
           python_version: "3.14"
 
-      - name: Scan packages for vulnerabilities
-        run: make POETRY=true safety-check
+      - name: Scan packages for vulnerabilities (pip-audit)
+        run: poetry run pip-audit
 
   spelling-check:
     name: Run spelling check
@@ -97,8 +100,8 @@ jobs:
 
       - uses: codespell-project/codespell-problem-matcher@v1
 
-      - name: Run spelling check
-        run: make POETRY=true spelling-check
+      - name: Run spelling check (codespell)
+        run: poetry run codespell .
 
   test:
     name: Run the tests (Python ${{ matrix.python_version }})
@@ -120,7 +123,7 @@ jobs:
           python_version: ${{ matrix.python_version }}
 
       - name: Run the tests
-        run: make POETRY=true test
+        run: poetry run pytest --cov --cov-report=term --cov-report=xml
 
       - name: Upload coverage report
         if: matrix.python_version == '3.14'
