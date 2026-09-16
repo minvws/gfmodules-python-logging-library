@@ -1,20 +1,41 @@
-# https://help.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+# https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
 
 version: 2
 
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: / # scans workflows + actions
     schedule:
-      interval: "weekly"
-
-  # Reads pyproject.toml and poetry.lock.
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Amsterdam
+    labels: [dependencies, github-actions]
+    commit-message:
+      prefix: "deps(actions)"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
     groups:
-      version-updates:
-        update-types: ["patch", "minor"]
-        patterns:
-          - "*"
+      actions: # action-bumps are one PR/week (low risk, large volume)
+        patterns: ["actions/*"]
+
+  - package-ecosystem: pip
+    directory: / # Scans pyproject.toml + poetry.lock
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:15"
+      timezone: Europe/Amsterdam
+    labels: [dependencies, python]
+    commit-message:
+      prefix: "deps(python)"
+      include: scope
+    open-pull-requests-limit: 10
+    # Freeze updates for any package released less than set days
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    groups:
+      python-patch-minor:
+        update-types: [patch, minor] # Major versions not grouped, one PR per breaking change
