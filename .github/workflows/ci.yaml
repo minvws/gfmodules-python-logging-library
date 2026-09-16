@@ -45,7 +45,7 @@ jobs:
           python_version: "3.14"
 
       - name: Lint (ruff check)
-        run: poetry run ruff check --select E4,E7,E9,F,I,Q
+        run: poetry run ruff check
 
       - name: Lint (ruff format)
         run: poetry run ruff format --diff
