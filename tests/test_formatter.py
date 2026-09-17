@@ -113,6 +113,8 @@ APP_MESSAGE: dict[str, Any] = {
     "ip": "10.0.0.7",
     "client_trace_id": "trace-1",
     "correlation_id": "corr-1",
+    "endpoint": "/health",
+    "method": "GET",
     "component": "database",
     "status": "unhealthy",
     "error_detail": "connection refused",
@@ -123,6 +125,8 @@ SIEM_MESSAGE: dict[str, Any] = {
     "ip": "10.0.0.7",
     "client_trace_id": "trace-1",
     "correlation_id": "corr-1",
+    "endpoint": "/health",
+    "method": "GET",
     "component": "database",
     "status": "unhealthy",
 }
@@ -162,6 +166,7 @@ PLAIN_LINE = (
 PLAIN_APP_LINE = (
     "2026-04-12T13:20:00Z ERROR    app.health [100600] Component database is unhealthy "
     "request_id=req-1 ip=10.0.0.7 client_trace_id=trace-1 correlation_id=corr-1 "
+    "endpoint=/health method=GET "
     "component=database status=unhealthy error_detail=connection refused"
 )
 
@@ -211,6 +216,7 @@ JSON_CASES: dict[str, tuple[JsonFormatter, dict[str, Any], str]] = {
 PLAIN_APP_LINE_WITH_TAG = (
     "2026-04-12T13:20:00Z [app] ERROR    app.health [100600] Component database is unhealthy "
     "request_id=req-1 ip=10.0.0.7 client_trace_id=trace-1 correlation_id=corr-1 "
+    "endpoint=/health method=GET "
     "component=database status=unhealthy error_detail=connection refused"
 )
 
@@ -261,9 +267,14 @@ class TestStreamRouting:
             assert message["client_trace_id"] == "trace-1"
             assert message["correlation_id"] == "corr-1"
 
-    def test_endpoint_and_method_are_dropped_when_not_allow_listed(self) -> None:
-        assert "endpoint" not in self.siem_message()
-        assert "method" not in self.siem_message()
+    def test_endpoint_and_method_survive_routing_on_every_stream_too(self) -> None:
+        for message in (self.app_message(), self.siem_message()):
+            assert message["endpoint"] == "/health"
+            assert message["method"] == "GET"
+
+    def test_an_ordinary_context_field_is_still_dropped_when_not_allow_listed(self) -> None:
+        assert "tenant_id" not in self.siem_message()
+        assert "tenant_id" not in self.app_message()
 
     def test_routing_is_skipped_when_the_event_declares_no_field_streams(self) -> None:
         message = self.siem_message(with_field_streams=False)

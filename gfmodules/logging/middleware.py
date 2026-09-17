@@ -222,7 +222,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     _internal_logger(),
                     catalogue.SYS_MISSING_CORRELATION_ID,
                     f"request arrived without {CORRELATION_ID_HEADER}",
-                    fields={"endpoint": context.endpoint, "method": context.method},
                 )
 
             body = (

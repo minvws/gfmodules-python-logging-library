@@ -71,10 +71,7 @@ STANDARD_FIELDS: tuple[ContextField, ...] = (
     SCOPE,
 )
 
-#: Correlation metadata every stream keeps, whatever an event's routing says.
-ALWAYS_KEEP_FIELDS: frozenset[str] = frozenset(
-    {REQUEST_ID.name, IP.name, USER_AGENT.name, CLIENT_TRACE_ID.name, CORRELATION_ID.name, SCOPE.name}
-)
+ALWAYS_KEEP_FIELDS: frozenset[str] = frozenset(field.name for field in STANDARD_FIELDS)
 
 _fields: tuple[ContextField, ...] = STANDARD_FIELDS
 _context_var: ContextVar[Mapping[str, str] | None] = ContextVar("gfmodules_logging_context", default=None)

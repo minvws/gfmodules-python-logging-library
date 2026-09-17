@@ -359,9 +359,9 @@ class TestCorrelationIdExpected:
 
         client.get("/ok")
 
-        record = records.with_event_id(MISSING_CORRELATION_EVENT_ID)[0]
-        assert record.endpoint == "/ok"  # type: ignore[attr-defined]
-        assert record.method == "GET"  # type: ignore[attr-defined]
+        message = records.messages_with_event_id(MISSING_CORRELATION_EVENT_ID)[0]
+        assert message["endpoint"] == "/ok"
+        assert message["method"] == "GET"
 
     def test_stays_quiet_when_the_correlation_id_is_present(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
