@@ -50,9 +50,12 @@ class Log(Base):
         event_id="100606",
         level=logging.WARNING,
         streams=(APP, SIEM),
-        fields={APP: ("endpoint", "method"), SIEM: ("endpoint", "method")},
     )
 ```
+
+`endpoint` and `method` need no entry in `fields` here: they are always kept
+context fields, so they reach both streams on their own once `streams` adds
+SIEM. `fields` only needs an allow list for a field that is not always kept.
 
 `with_id` is `replace(event_id=...)` under a shorter name. Both return a new
 event, so the inherited one is never mutated. Restating a whole `LogEvent` still

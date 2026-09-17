@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 - 2026-09-17
+
+### Changed (breaking)
+
+- `endpoint` and `method` join `ALWAYS_KEEP_FIELDS`: every stream now carries
+  them on every event, not only the ones that allow list them.
+- `emit()` now rejects any `fields` entry whose name matches a registered
+  context field, whether or not `strict_fields` is on. Passing one through
+  `fields` would silently forge the bound context value for that record
+  instead of the value context actually collected; bind or update the
+  context instead.
+
 ## 0.4.0 - 2026-09-10
 
 ### Added
