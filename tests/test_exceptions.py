@@ -53,10 +53,10 @@ class TestLogUnhandledException:
     ) -> None:
         build_client().get("/boom")
 
-        record = records.with_event_id(UNHANDLED)[0]
-        assert record.exception_type == "ValueError"  # type: ignore[attr-defined]
-        assert record.endpoint == "/boom"  # type: ignore[attr-defined]
-        assert record.method == "GET"  # type: ignore[attr-defined]
+        message = records.messages_with_event_id(UNHANDLED)[0]
+        assert message["exception_type"] == "ValueError"
+        assert message["endpoint"] == "/boom"
+        assert message["method"] == "GET"
 
     def test_carries_the_traceback(self, catalogue: type[CompleteCatalogue], records: RecordingHandler) -> None:
         build_client().get("/boom")

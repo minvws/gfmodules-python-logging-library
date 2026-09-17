@@ -11,7 +11,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Self
 
-from gfmodules.logging.context import ALWAYS_KEEP_FIELDS
+from gfmodules.logging.context import ALWAYS_KEEP_FIELDS, registered_fields
 from gfmodules.logging.loggers import report_outside_root, within_root
 from gfmodules.logging.streams import LoggingStreams
 
@@ -178,6 +178,13 @@ def emit(
     reserved = sorted(RESERVED_FIELDS & values.keys())
     if reserved:
         raise ValueError(f"event {event.event_id} names fields a log record reserves: {', '.join(reserved)}")
+
+    context_fields = sorted({context_field.name for context_field in registered_fields()} & values.keys())
+    if context_fields:
+        raise ValueError(
+            f"event {event.event_id} names fields the request context already binds: {', '.join(context_fields)}. "
+            "Context reaches every record on its own; bind or update it instead of passing these through fields."
+        )
 
     if _strict_fields:
         unrouted = unrouted_fields(event, values)

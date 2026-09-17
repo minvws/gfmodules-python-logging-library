@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from gfmodules.logging.context import ContextField, register_context_fields
 from gfmodules.logging.events import (
     _STDLIB_RECORD_FIELDS,
     REQUIRED_EVENTS,
@@ -174,6 +175,46 @@ class TestFieldNamespace:
     def test_the_catalogue_helper_guards_the_same_way(self, logger: logging.Logger) -> None:
         with pytest.raises(ValueError, match="stream"):
             CompleteCatalogue.event(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"stream": "siem"})
+
+
+class TestContextFieldNamespace:
+    def test_a_standard_context_field_is_rejected(self, logger: logging.Logger, handler: RecordingHandler) -> None:
+        with pytest.raises(ValueError, match="endpoint"):
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"endpoint": "/elsewhere"})
+
+        assert handler.records == []
+
+    def test_names_every_shadowed_field_at_once(self, logger: logging.Logger) -> None:
+        with pytest.raises(ValueError, match="endpoint, method"):
+            emit(
+                logger,
+                CompleteCatalogue.RESOURCE_CREATED,
+                "created",
+                fields={"endpoint": "/elsewhere", "method": "GET"},
+            )
+
+    def test_an_application_registered_field_is_guarded_too(self, logger: logging.Logger) -> None:
+        register_context_fields((ContextField(name="tenant_id", header="X-Tenant-Id"),))
+
+        with pytest.raises(ValueError, match="tenant_id"):
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"tenant_id": "t-1"})
+
+    def test_the_catalogue_helper_guards_the_same_way(self, logger: logging.Logger) -> None:
+        with pytest.raises(ValueError, match="method"):
+            CompleteCatalogue.event(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"method": "GET"})
+
+    def test_applies_whether_or_not_strict_fields_is_on(self, logger: logging.Logger) -> None:
+        set_strict_fields(True)
+        try:
+            with pytest.raises(ValueError, match="endpoint"):
+                emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"endpoint": "/elsewhere"})
+        finally:
+            set_strict_fields(False)
+
+    def test_an_ordinary_field_name_is_unaffected(self, logger: logging.Logger, handler: RecordingHandler) -> None:
+        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"resource_id": "12345"})
+
+        assert handler.records[0].resource_id == "12345"  # type: ignore[attr-defined]
 
 
 class TestSourceResolution:
@@ -503,12 +544,11 @@ class TestStrictFields:
 
         assert handler.records[0].resource_id == "r-1"  # type: ignore[attr-defined]
 
-    def test_accepts_correlation_metadata_that_every_stream_keeps(
-        self, logger: logging.Logger, handler: RecordingHandler
+    def test_rejects_correlation_metadata_too_even_though_every_stream_would_keep_it(
+        self, logger: logging.Logger
     ) -> None:
-        emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"request_id": "req-1"})
-
-        assert handler.records[0].request_id == "req-1"  # type: ignore[attr-defined]
+        with pytest.raises(ValueError, match="request_id"):
+            emit(logger, CompleteCatalogue.RESOURCE_CREATED, "created", fields={"request_id": "req-1"})
 
     def test_says_nothing_about_an_event_that_declares_no_routing(self, logger: logging.Logger) -> None:
         emit(logger, LogEvent("1", logging.INFO, (LoggingStreams.APP,)), "no routing", fields={"anything": "goes"})
