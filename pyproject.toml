@@ -33,7 +33,7 @@ ruff = ">=0.16.7,<0.17.0"
 codespell = "^2.2.6"
 pip-audit = "^2.10.0"
 # Required by starlette's TestClient, which the end-to-end tests drive.
-httpx2 = "^2.5.0"
+httpx2 = "^2.13.0"
 # Not a runtime dependency: the library needs starlette only. FastAPI is here
 # because per-route access event ids depend on scope["route"], which FastAPI's
 # APIRoute sets and bare starlette Routes do not.
