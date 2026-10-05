@@ -310,8 +310,9 @@ class TestReservedFieldNames:
 
     def test_a_reserved_field_really_does_break_the_standard_library(self, logger: logging.Logger) -> None:
         """The check is worth having only if the failure it prevents is real."""
-        with pytest.raises(KeyError, match="module"):
-            logger.info("access", extra={"module": "auth"})
+        reserved_field = "module"
+        with pytest.raises(KeyError, match=reserved_field):
+            logger.info("access", extra={reserved_field: "auth"})
 
     def test_the_running_interpreter_adds_no_attribute_the_frozen_set_misses(self) -> None:
         """The guard on the frozen list.

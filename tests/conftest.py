@@ -56,10 +56,7 @@ def isolate_logging() -> Iterator[None]:
     for name, log in list(logging.Logger.manager.loggerDict.items()):
         if not isinstance(log, logging.Logger):
             continue
-        if name in snapshot:
-            log.handlers, log.level, log.propagate = snapshot[name]
-        else:
-            log.handlers, log.level, log.propagate = [], logging.NOTSET, True
+        log.handlers, log.level, log.propagate = snapshot.get(name, ([], logging.NOTSET, True))
 
 
 @pytest.fixture(autouse=True)

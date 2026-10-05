@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from gfmodules.logging.context import ALWAYS_KEEP_FIELDS, collect_context
@@ -62,7 +62,7 @@ class JsonFormatter(logging.Formatter):
 
         log_record: dict[str, Any] = {
             "event_id": getattr(record, "event_id", None),
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "event_description": _sanitize_message(record.getMessage()),
             "source": f"{record.module}:{record.lineno}",
@@ -89,7 +89,7 @@ class PlainTextFormatter(logging.Formatter):
         self.stream_id = stream_id
 
     def format(self, record: logging.LogRecord) -> str:
-        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         event_id = getattr(record, "event_id", None) or "-"
         stream_tag = f" [{self.stream_id}]" if self.stream_id else ""
         base = f"{timestamp}{stream_tag} {record.levelname:<8} {record.name} [{event_id}] {_sanitize_message(record.getMessage())}"

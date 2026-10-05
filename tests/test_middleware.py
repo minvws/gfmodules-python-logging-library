@@ -247,9 +247,8 @@ class TestAccessLogging:
         app = build_app()
         app.add_middleware(RequestContextMiddleware)
 
-        with pytest.raises(RuntimeError, match="access logging"):
-            with TestClient(app):
-                pass
+        with pytest.raises(RuntimeError, match="access logging"), TestClient(app):
+            pass
 
 
 @pytest.fixture

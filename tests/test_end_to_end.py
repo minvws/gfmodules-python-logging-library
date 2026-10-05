@@ -80,12 +80,11 @@ def configured() -> Iterator[None]:
 
 class TestRequestLifecycle:
     def test_an_event_logged_in_a_handler_carries_the_request_context(self) -> None:
-        with capture_records() as captured:
-            with TestClient(build_app()) as client:
-                response = client.get(
-                    "/resources",
-                    headers={gflog.CORRELATION_ID_HEADER: "corr-1", "X-Tenant-Id": "t-1"},
-                )
+        with capture_records() as captured, TestClient(build_app()) as client:
+            response = client.get(
+                "/resources",
+                headers={gflog.CORRELATION_ID_HEADER: "corr-1", "X-Tenant-Id": "t-1"},
+            )
 
         entry = assert_event_emitted(captured, CompleteCatalogue.RESOURCE_CREATED, resource_id="12345")
         assert entry.message["correlation_id"] == "corr-1"
@@ -94,24 +93,21 @@ class TestRequestLifecycle:
         assert entry.message["request_id"] == response.headers[gflog.REQUEST_ID_HEADER]
 
     def test_a_declared_extra_context_field_reaches_the_record(self) -> None:
-        with capture_records() as captured:
-            with TestClient(build_app()) as client:
-                client.get("/resources", headers={"X-Tenant-Id": "t-1"})
+        with capture_records() as captured, TestClient(build_app()) as client:
+            client.get("/resources", headers={"X-Tenant-Id": "t-1"})
 
         entry = assert_event_emitted(captured, CompleteCatalogue.RESOURCE_CREATED)
         assert entry.message["tenant_id"] == "t-1"
 
     def test_the_access_record_reports_the_outcome(self) -> None:
-        with capture_records() as captured:
-            with TestClient(build_app()) as client:
-                client.get("/resources")
+        with capture_records() as captured, TestClient(build_app()) as client:
+            client.get("/resources")
 
         assert_event_emitted(captured, CompleteCatalogue.ACCESS_REQUEST, status_code=200)
 
     def test_a_route_with_its_own_event_id_uses_it(self) -> None:
-        with capture_records() as captured:
-            with TestClient(build_app()) as client:
-                client.delete("/resources/7")
+        with capture_records() as captured, TestClient(build_app()) as client:
+            client.delete("/resources/7")
 
         assert [entry for entry in captured if entry.event_id == "100702"]
 
@@ -123,9 +119,8 @@ class TestRequestLifecycle:
             extra_context_fields=(TENANT_ID,),
         )
 
-        with capture_records() as captured:
-            with TestClient(build_app()) as client:
-                client.get("/resources")
+        with capture_records() as captured, TestClient(build_app()) as client:
+            client.get("/resources")
 
         assert captured.for_event(CompleteCatalogue.ACCESS_REQUEST) == []
         assert_event_emitted(captured, CompleteCatalogue.RESOURCE_CREATED)
@@ -133,17 +128,15 @@ class TestRequestLifecycle:
 
 class TestStreamSeparation:
     def test_the_siem_stream_only_receives_its_allow_listed_fields(self) -> None:
-        with capture_stream(LoggingStreams.SIEM) as siem:
-            with TestClient(build_app()) as client:
-                client.get("/resources")
+        with capture_stream(LoggingStreams.SIEM) as siem, TestClient(build_app()) as client:
+            client.get("/resources")
 
         assert_fields_absent(siem, "owner_id", "created_by", "config_path", "version")
         assert any(message.get("resource_id") == "12345" for message in siem)
 
     def test_the_app_stream_receives_the_wider_set(self) -> None:
-        with capture_stream(LoggingStreams.APP) as app_stream:
-            with TestClient(build_app()) as client:
-                client.get("/resources")
+        with capture_stream(LoggingStreams.APP) as app_stream, TestClient(build_app()) as client:
+            client.get("/resources")
 
         created = [message for message in app_stream if message.get("resource_id")]
         assert created[0]["owner_id"] == "o-1"
@@ -152,9 +145,8 @@ class TestStreamSeparation:
 
 class TestApplicationLifecycle:
     def test_started_and_stopped_bracket_the_application(self) -> None:
-        with capture_records() as captured:
-            with TestClient(build_app()):
-                pass
+        with capture_records() as captured, TestClient(build_app()):
+            pass
 
         assert_event_emitted(captured, CompleteCatalogue.SYS_APP_STARTED, version="1.2.3")
         stopped = [
@@ -167,9 +159,8 @@ class TestApplicationLifecycle:
 
 class TestUnhandledExceptions:
     def test_the_exception_is_logged_with_the_request_context(self) -> None:
-        with capture_records() as captured:
-            with TestClient(build_app(), raise_server_exceptions=False) as client:
-                response = client.get("/boom", headers={gflog.CORRELATION_ID_HEADER: "corr-1"})
+        with capture_records() as captured, TestClient(build_app(), raise_server_exceptions=False) as client:
+            response = client.get("/boom", headers={gflog.CORRELATION_ID_HEADER: "corr-1"})
 
         assert response.status_code == 500
         entry = assert_event_emitted(captured, CompleteCatalogue.SYS_UNHANDLED_EXCEPTION, exception_type="ValueError")

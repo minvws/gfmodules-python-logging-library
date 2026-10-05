@@ -96,20 +96,17 @@ class TestUpdateContext:
     def test_adds_to_what_is_already_bound(self) -> None:
         register_context_fields((TENANT_ID,))
 
-        with bind_context({"request_id": "abc"}):
-            with update_context({"tenant_id": "t-1"}):
-                assert collect_context() == {"request_id": "abc", "tenant_id": "t-1"}
+        with bind_context({"request_id": "abc"}), update_context({"tenant_id": "t-1"}):
+            assert collect_context() == {"request_id": "abc", "tenant_id": "t-1"}
 
     def test_an_undeclared_field_still_reaches_no_record(self) -> None:
         """Like every other value: only declared fields are collected."""
-        with bind_context({"request_id": "abc"}):
-            with update_context({"undeclared": "x"}):
-                assert collect_context() == {"request_id": "abc"}
+        with bind_context({"request_id": "abc"}), update_context({"undeclared": "x"}):
+            assert collect_context() == {"request_id": "abc"}
 
     def test_overrides_a_value_that_is_already_bound(self) -> None:
-        with bind_context({"request_id": "abc"}):
-            with update_context({"request_id": "xyz"}):
-                assert collect_context()["request_id"] == "xyz"
+        with bind_context({"request_id": "abc"}), update_context({"request_id": "xyz"}):
+            assert collect_context()["request_id"] == "xyz"
 
     def test_the_addition_is_gone_after_the_block(self) -> None:
         with bind_context({"request_id": "abc"}):
@@ -131,9 +128,8 @@ class TestBindContext:
         assert collect_context() == {}
 
     def test_restores_the_previous_context_when_the_body_raises(self) -> None:
-        with bind_context({"request_id": "abc"}):
-            with pytest.raises(RuntimeError):
-                raise RuntimeError("boom")
+        with bind_context({"request_id": "abc"}), pytest.raises(RuntimeError):
+            raise RuntimeError("boom")
 
         assert collect_context() == {}
 
