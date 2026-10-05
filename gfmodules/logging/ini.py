@@ -6,7 +6,8 @@ agnostic to where its data comes from. An application whose config loader reads
 INI opts in per field instead.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 __all__ = ["split_comma_separated"]
 

@@ -261,7 +261,7 @@ class _restored_excepthook:
     def __enter__(self) -> None:
         self.previous = sys.excepthook
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         sys.excepthook = self.previous
 
 
@@ -269,6 +269,6 @@ class _restored_signals:
     def __enter__(self) -> None:
         self.previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         for sig, handler in self.previous.items():
             signal.signal(sig, handler)
