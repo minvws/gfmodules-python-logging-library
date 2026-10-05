@@ -1,6 +1,8 @@
 """Event catalogues used across the tests, standing in for an application's own."""
 
 import logging
+from collections.abc import Mapping
+from typing import ClassVar
 
 from gfmodules.logging.events import EventCatalogue, LogEvent
 from gfmodules.logging.streams import LoggingStreams
@@ -44,7 +46,7 @@ class CompleteCatalogue(EventCatalogue):
         {_APP: ("owner_id", "resource_id", "created_by"), _SIEM: ("resource_id",)},
     )
 
-    access_event_id = {
+    access_event_id: ClassVar[Mapping[tuple[str, str], str]] = {
         ("POST", "/resources"): "100700",
         ("DELETE", "/resources/{id}"): "100702",
     }

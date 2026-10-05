@@ -4,6 +4,8 @@ ids its system numbers them with, and to declare its own events.
 """
 
 import logging
+from collections.abc import Mapping
+from typing import ClassVar
 
 from gfmodules.logging import DefaultEventCatalogue, LogEvent, LoggingStreams
 
@@ -50,7 +52,7 @@ class Log(Base):
     # A slot may alias another event where the trigger has no dedicated id.
     LOOKUP_MALFORMED = LOOKUP_REJECTED
 
-    access_event_id = {
+    access_event_id: ClassVar[Mapping[tuple[str, str], str]] = {
         ("POST", "/resources"): "100710",
         ("DELETE", "/resources/{resource_id}"): "100711",
     }
