@@ -8,6 +8,12 @@
   own, such as SQLAlchemy's with `echo=True` or an application module set to
   `DEBUG`, got records below `loglevel` onto every stream on the log server
   and onto the debug console. Lower `loglevel` to see those records again.
+- Records from the `uvicorn` and `uvicorn.error` loggers no longer reach the
+  log server on the app stream. They carried no event id, so the log server
+  could not place them, and uvicorn's "Exception in ASGI application"
+  duplicated the application's `SYS_UNHANDLED_EXCEPTION` record. They still
+  reach the log server on the debug stream, and the console app stream still
+  shows them.
 
 ## 0.5.0 - 2026-09-17
 
