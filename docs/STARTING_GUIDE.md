@@ -109,6 +109,10 @@ gflog.configure(
 )
 ```
 
+`loglevel` applies to every stream, on the console and on the log server alike.
+A logger with a lower level of its own, such as SQLAlchemy's with `echo=True`,
+cannot get a record below `loglevel` through.
+
 Compose `ConfigLogging` into the application's own settings model:
 
 ```python

@@ -272,3 +272,39 @@ class TestApplicationId:
         configure()
 
         assert streams_reporting(delivered, "no application_id") == set()
+
+
+class TestALoggerSetBelowTheLogLevel:
+    @pytest.mark.parametrize("name", ["sqlalchemy.engine.Engine", "app.db"])
+    def test_its_records_stay_off_the_log_server(self, delivered: list[dict[str, Any]], name: str) -> None:
+        configure(loglevel="WARNING")
+        logging.getLogger(name).setLevel(logging.DEBUG)
+
+        logging.getLogger(name).info("below the log level")
+
+        assert delivered == []
+
+    def test_its_events_stay_off_the_log_server(self, delivered: list[dict[str, Any]]) -> None:
+        configure(loglevel="WARNING")
+        logging.getLogger("app.db").setLevel(logging.DEBUG)
+
+        gflog.emit(
+            logging.getLogger("app.db"),
+            CompleteCatalogue.RESOURCE_CREATED,
+            "resource created",
+            fields={"resource_id": "r-1", "owner_id": "o-1", "created_by": "alice"},
+        )
+
+        assert delivered == []
+
+    def test_its_records_stay_off_the_debug_console(self, capsys: pytest.CaptureFixture[str]) -> None:
+        gflog.configure(
+            config=gflog.ConfigLogging(console_streams=["debug"]),
+            loglevel="WARNING",
+            catalogue=CompleteCatalogue,
+        )
+        logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.DEBUG)
+
+        logging.getLogger("sqlalchemy.engine.Engine").info("below the log level")
+
+        assert "below the log level" not in capsys.readouterr().out

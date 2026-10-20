@@ -31,6 +31,7 @@ class LogConfigBuilder:
         cfg: dict[str, Any] = {
             "class": "logging.handlers.SysLogHandler",
             "address": (host, int(port_str)),
+            "level": self.loglevel,
             "formatter": formatter,
         }
         if filters:
@@ -148,28 +149,22 @@ class LogConfigBuilder:
         uvicorn_error_handlers = conf["loggers"]["uvicorn.error"]["handlers"]
         root_handlers = conf["root"]["handlers"]
 
-        bindings: dict[str, tuple[str, str | None, str, list[list[str]]]] = {
-            "app": (
-                "plain_app",
-                "app_filter",
-                self.loglevel,
-                [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers],
-            ),
-            "siem": ("plain_siem", "siem_filter", self.loglevel, [app_logger_handlers]),
+        bindings: dict[str, tuple[str, str | None, list[list[str]]]] = {
+            "app": ("plain_app", "app_filter", [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers]),
+            "siem": ("plain_siem", "siem_filter", [app_logger_handlers]),
             "debug": (
                 "plain_debug",
                 None,
-                "DEBUG",
                 [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers, root_handlers],
             ),
         }
 
         for stream_name in self._selected_console_streams():
-            formatter, filter_name, level, logger_handler_lists = bindings[stream_name]
+            formatter, filter_name, logger_handler_lists = bindings[stream_name]
             handler_name = f"console_{stream_name}"
             handler: dict[str, Any] = {
                 "class": "logging.StreamHandler",
-                "level": level,
+                "level": self.loglevel,
                 "formatter": formatter,
                 "stream": "ext://sys.stdout",
             }

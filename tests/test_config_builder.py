@@ -86,24 +86,28 @@ EXPECTED_SYSLOG_DOCUMENT: dict[str, Any] = {
         "syslog_app": {
             "class": "logging.handlers.SysLogHandler",
             "address": ADDRESS,
+            "level": "INFO",
             "formatter": "json_app",
             "filters": ["app_filter"],
         },
         "syslog_siem": {
             "class": "logging.handlers.SysLogHandler",
             "address": ADDRESS,
+            "level": "INFO",
             "formatter": "json_siem",
             "filters": ["siem_filter"],
         },
         "syslog_public_inspect": {
             "class": "logging.handlers.SysLogHandler",
             "address": ADDRESS,
+            "level": "INFO",
             "formatter": "json_public_inspect",
             "filters": ["public_inspect_filter"],
         },
         "syslog_debug": {
             "class": "logging.handlers.SysLogHandler",
             "address": ADDRESS,
+            "level": "INFO",
             "formatter": "json_debug",
         },
     },
@@ -199,6 +203,18 @@ class TestTheDefaultConsole:
         assert conf["handlers"]["console_siem"]["level"] == "WARNING"
         assert conf["loggers"]["app"]["level"] == "WARNING"
         assert conf["root"]["level"] == "WARNING"
+
+
+class TestTheLogLevel:
+    def test_every_handler_applies_it(self) -> None:
+        conf = build(
+            ConfigLogging(syslog_path=SYSLOG, console_streams=["app", "siem", "debug"]),
+            loglevel="WARNING",
+        )
+
+        assert {name: spec.get("level") for name, spec in conf["handlers"].items()} == dict.fromkeys(
+            conf["handlers"], "WARNING"
+        )
 
 
 class TestConsoleStreamSelection:
