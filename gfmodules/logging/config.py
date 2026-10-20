@@ -14,3 +14,4 @@ class ConfigLogging(BaseModel):
     # Which streams reach stdout as readable text, from "app", "siem" and "debug".
     # Empty leaves stdout silent.
     console_streams: list[str] = Field(default=["app", "siem"])
+    syslog_streams: list[str] = Field(default=["app", "siem", "public_inspect"])

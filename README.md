@@ -131,7 +131,8 @@ Records are JSON with a fixed structure:
 
 The format is a fixed contract with the log server: `stream_id` identifies the
 stream (`app`, `siem`, `public_inspect`, `debug`) and `application_id` identifies
-the source application.
+the source application. The `debug` stream reaches the log server only when
+`syslog_streams` selects it.
 
 ## Development
 

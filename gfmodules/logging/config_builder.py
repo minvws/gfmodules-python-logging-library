@@ -8,6 +8,15 @@ from gfmodules.logging.loggers import active_logger_root
 from gfmodules.logging.streams import LoggingStreams
 
 CONSOLE_STREAMS = ("app", "siem", "debug")
+SYSLOG_STREAMS = ("app", "siem", "public_inspect", "debug")
+
+
+def _selected(setting: str, names: list[str], choices: tuple[str, ...]) -> list[str]:
+    unknown = [name for name in names if name not in choices]
+    if unknown:
+        raise ValueError(f"unknown {setting} {unknown}, choose from {list(choices)}")
+
+    return list(dict.fromkeys(names))
 
 
 def _at_least(loglevel: str, floor: int) -> str:
@@ -72,7 +81,7 @@ class LogConfigBuilder:
                 },
                 "json_debug": {
                     "()": JsonFormatter,
-                    "include_traces": True,
+                    "include_traces": traces,
                     "stream_id": "debug",
                 },
                 "plain_app": {
@@ -136,13 +145,6 @@ class LogConfigBuilder:
 
         return conf
 
-    def _selected_console_streams(self) -> list[str]:
-        unknown = [name for name in self.logging_config.console_streams if name not in CONSOLE_STREAMS]
-        if unknown:
-            raise ValueError(f"unknown console_streams {unknown}, choose from {list(CONSOLE_STREAMS)}")
-
-        return list(dict.fromkeys(self.logging_config.console_streams))
-
     def _add_console_streams(self, conf: dict[str, Any]) -> None:
         app_logger_handlers = conf["loggers"][active_logger_root()]["handlers"]
         uvicorn_handlers = conf["loggers"]["uvicorn"]["handlers"]
@@ -159,7 +161,7 @@ class LogConfigBuilder:
             ),
         }
 
-        for stream_name in self._selected_console_streams():
+        for stream_name in _selected("console_streams", self.logging_config.console_streams, CONSOLE_STREAMS):
             formatter, filter_name, logger_handler_lists = bindings[stream_name]
             handler_name = f"console_{stream_name}"
             handler: dict[str, Any] = {
@@ -175,6 +177,7 @@ class LogConfigBuilder:
                 logger_handlers.append(handler_name)
 
     def _add_log_handlers(self, conf: dict[str, Any]) -> None:
+        streams = _selected("syslog_streams", self.logging_config.syslog_streams, SYSLOG_STREAMS)
         path = self.logging_config.syslog_path
         if not path:
             return
@@ -182,22 +185,24 @@ class LogConfigBuilder:
         app_logger_handlers = conf["loggers"][active_logger_root()]["handlers"]
         uvicorn_handlers = conf["loggers"]["uvicorn"]["handlers"]
         uvicorn_error_handlers = conf["loggers"]["uvicorn.error"]["handlers"]
+        root_handlers = conf["root"]["handlers"]
 
-        conf["handlers"]["syslog_app"] = self._syslog_handler(path, formatter="json_app", filters=["app_filter"])
-        app_logger_handlers.append("syslog_app")
-        uvicorn_handlers.append("syslog_app")
-        uvicorn_error_handlers.append("syslog_app")
+        bindings: dict[str, tuple[str, str | None, list[list[str]]]] = {
+            "app": ("json_app", "app_filter", [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers]),
+            "siem": ("json_siem", "siem_filter", [app_logger_handlers]),
+            "public_inspect": ("json_public_inspect", "public_inspect_filter", [app_logger_handlers]),
+            "debug": (
+                "json_debug",
+                None,
+                [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers, root_handlers],
+            ),
+        }
 
-        conf["handlers"]["syslog_siem"] = self._syslog_handler(path, formatter="json_siem", filters=["siem_filter"])
-        app_logger_handlers.append("syslog_siem")
-
-        conf["handlers"]["syslog_public_inspect"] = self._syslog_handler(
-            path, formatter="json_public_inspect", filters=["public_inspect_filter"]
-        )
-        app_logger_handlers.append("syslog_public_inspect")
-
-        conf["handlers"]["syslog_debug"] = self._syslog_handler(path, formatter="json_debug")
-        app_logger_handlers.append("syslog_debug")
-        uvicorn_handlers.append("syslog_debug")
-        uvicorn_error_handlers.append("syslog_debug")
-        conf["root"]["handlers"].append("syslog_debug")
+        for stream_name in streams:
+            formatter, filter_name, logger_handler_lists = bindings[stream_name]
+            handler_name = f"syslog_{stream_name}"
+            conf["handlers"][handler_name] = self._syslog_handler(
+                path, formatter=formatter, filters=[filter_name] if filter_name else None
+            )
+            for logger_handlers in logger_handler_lists:
+                logger_handlers.append(handler_name)

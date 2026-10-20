@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Changed (breaking)
+
+- The debug stream no longer reaches the log server by default. It has no
+  filter and no field allow-list, so it sent request bodies, SQL parameters
+  and tracebacks to the log server whatever the application configured. Set
+  `syslog_streams=["app", "siem", "public_inspect", "debug"]` for the old
+  behavior.
+- The debug stream on the log server now honours `include_traces`, so
+  `include_traces=False` keeps tracebacks off the log server as well.
+
+### Added
+
+- `syslog_streams` on `ConfigLogging` selects which streams (`app`, `siem`,
+  `public_inspect`, `debug`) reach the log server. It defaults to
+  `["app", "siem", "public_inspect"]`. An empty list sends nothing; an unknown
+  stream name fails at boot.
+
 ### Fixed
 
 - `loglevel` now applies to every stream. A logger with a lower level of its
