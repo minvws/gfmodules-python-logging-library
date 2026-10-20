@@ -188,7 +188,7 @@ class LogConfigBuilder:
         root_handlers = conf["root"]["handlers"]
 
         bindings: dict[str, tuple[str, str | None, list[list[str]]]] = {
-            "app": ("json_app", "app_filter", [app_logger_handlers, uvicorn_handlers, uvicorn_error_handlers]),
+            "app": ("json_app", "app_filter", [app_logger_handlers]),
             "siem": ("json_siem", "siem_filter", [app_logger_handlers]),
             "public_inspect": ("json_public_inspect", "public_inspect_filter", [app_logger_handlers]),
             "debug": (

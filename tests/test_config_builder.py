@@ -119,12 +119,12 @@ EXPECTED_SYSLOG_DOCUMENT: dict[str, Any] = {
             "propagate": False,
         },
         "uvicorn": {
-            "handlers": ["console_app", "syslog_app"],
+            "handlers": ["console_app"],
             "level": "INFO",
             "propagate": False,
         },
         "uvicorn.error": {
-            "handlers": ["console_app", "syslog_app"],
+            "handlers": ["console_app"],
             "level": "INFO",
             "propagate": False,
         },
@@ -330,6 +330,17 @@ class TestSyslogHandlers:
         conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=EVERY_SYSLOG_STREAM))
 
         assert conf["root"]["handlers"] == ["syslog_debug"]
+
+    @pytest.mark.parametrize("logger", ["uvicorn", "uvicorn.error"])
+    def test_server_records_reach_the_log_server_on_the_debug_stream_only(self, logger: str) -> None:
+        conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=EVERY_SYSLOG_STREAM))
+
+        assert [name for name in conf["loggers"][logger]["handlers"] if name.startswith("syslog_")] == ["syslog_debug"]
+
+    def test_server_records_still_reach_the_app_console(self) -> None:
+        conf = build(ConfigLogging(syslog_path=SYSLOG))
+
+        assert "console_app" in conf["loggers"]["uvicorn.error"]["handlers"]
 
     def test_siem_and_public_inspect_are_bound_to_the_app_logger_only(self) -> None:
         conf = build(ConfigLogging(syslog_path=SYSLOG))
