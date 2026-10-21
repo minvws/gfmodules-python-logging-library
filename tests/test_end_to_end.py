@@ -6,8 +6,11 @@ surface applications actually consume.
 
 import json
 import logging
+import re
+import socket
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -234,3 +237,60 @@ class TestConfigure:
 
         assert "unknown console_streams" in str(raised.value)
         assert "could not reach the log server" not in str(raised.value)
+
+
+class TestTheLogServer:
+    @pytest.fixture
+    def log_server(self) -> Iterator[socket.socket]:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+            server.bind(("127.0.0.1", 0))
+            server.settimeout(0.2)
+            host, port = server.getsockname()
+            gflog.configure(
+                config=gflog.ConfigLogging(
+                    application_id="example-service", syslog_path=f"{host}:{port}", console_streams=[]
+                ),
+                loglevel="info",
+                catalogue=CompleteCatalogue,
+            )
+            try:
+                yield server
+            finally:
+                for name in ("app", "uvicorn", "uvicorn.error", ""):
+                    for handler in logging.getLogger(name or None).handlers:
+                        handler.close()
+
+    @staticmethod
+    def _received(server: socket.socket) -> list[dict[str, Any]]:
+        payloads = []
+        try:
+            while True:
+                datagram = server.recv(65535).decode().rstrip("\x00")
+                payloads.append(json.loads(re.sub(r"^<\d+>", "", datagram)))
+        except TimeoutError:
+            return payloads
+
+    @pytest.mark.parametrize(
+        "name,message",
+        [("uvicorn", "Started server process"), ("uvicorn.error", "Exception in ASGI application")],
+    )
+    def test_a_server_record_reaches_the_debug_stream_only(
+        self, log_server: socket.socket, name: str, message: str
+    ) -> None:
+        logging.getLogger(name).error(message)
+
+        assert [payload["stream_id"] for payload in self._received(log_server)] == ["debug"]
+
+    def test_an_unhandled_exception_reaches_the_app_stream_once(self, log_server: socket.socket) -> None:
+        with TestClient(build_app(), raise_server_exceptions=False) as client:
+            client.get("/boom")
+        logging.getLogger("uvicorn.error").error("Exception in ASGI application")
+
+        errors = [
+            payload
+            for payload in self._received(log_server)
+            if payload["stream_id"] == "app" and payload["level"] == "ERROR"
+        ]
+        assert [(payload["event_id"], payload["event_description"]) for payload in errors] == [
+            (CompleteCatalogue.SYS_UNHANDLED_EXCEPTION.event_id, "unhandled exception")
+        ]
