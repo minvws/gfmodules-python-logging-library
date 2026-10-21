@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `loglevel` now applies to every stream. A logger with a lower level of its
+  own, such as SQLAlchemy's with `echo=True` or an application module set to
+  `DEBUG`, got records below `loglevel` onto every stream on the log server
+  and onto the debug console. Lower `loglevel` to see those records again.
+
 ## 0.5.0 - 2026-09-17
 
 ### Changed (breaking)
