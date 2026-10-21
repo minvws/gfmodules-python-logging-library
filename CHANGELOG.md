@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed (breaking)
+
+- `ConfigLogging` now rejects a stream named more than once in
+  `console_streams`. The duplicate was silently dropped before, which hid a
+  typo or a merge mistake in the configuration.
+
 ### Fixed
 
 - `loglevel` now applies to every stream. A logger with a lower level of its
