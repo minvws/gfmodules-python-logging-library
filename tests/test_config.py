@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from gfmodules.logging.config import ConfigLogging
 
 
@@ -17,6 +20,16 @@ def test_access_logging_is_on_unless_an_application_opts_out() -> None:
 
 def test_an_empty_console_selection_is_kept_rather_than_read_as_the_default() -> None:
     assert ConfigLogging(console_streams=[]).console_streams == []
+
+
+def test_a_console_stream_named_twice_is_rejected() -> None:
+    with pytest.raises(ValidationError, match=r"duplicate console_streams \['debug'\]"):
+        ConfigLogging(console_streams=["app", "debug", "debug"])
+
+
+def test_a_syslog_stream_named_twice_is_rejected() -> None:
+    with pytest.raises(ValidationError, match=r"duplicate syslog_streams \['siem'\]"):
+        ConfigLogging(syslog_streams=["app", "siem", "siem"])
 
 
 def test_accepts_an_application_supplied_configuration() -> None:

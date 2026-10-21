@@ -11,6 +11,9 @@
   behavior.
 - The debug stream on the log server now honours `include_traces`, so
   `include_traces=False` keeps tracebacks off the log server as well.
+- `ConfigLogging` now rejects a stream named more than once in
+  `console_streams` or `syslog_streams`. The duplicate was silently dropped
+  before, which hid a typo or a merge mistake in the configuration.
 
 ### Added
 

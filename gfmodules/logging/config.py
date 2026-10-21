@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from collections import Counter
+
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class ConfigLogging(BaseModel):
@@ -15,3 +17,11 @@ class ConfigLogging(BaseModel):
     # Empty leaves stdout silent.
     console_streams: list[str] = Field(default=["app", "siem"])
     syslog_streams: list[str] = Field(default=["app", "siem", "public_inspect"])
+
+    @field_validator("console_streams", "syslog_streams")
+    @classmethod
+    def _reject_duplicate_streams(cls, names: list[str], info: ValidationInfo) -> list[str]:
+        duplicates = [name for name, count in Counter(names).items() if count > 1]
+        if duplicates:
+            raise ValueError(f"duplicate {info.field_name} {duplicates}")
+        return names
