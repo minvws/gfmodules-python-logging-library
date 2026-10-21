@@ -13,6 +13,7 @@ from gfmodules.logging.streams import LoggingStreams
 APP_ID = "example-service"
 SYSLOG = "syslog-server:5514"
 ADDRESS = ("syslog-server", 5514)
+EVERY_SYSLOG_STREAM = ["app", "siem", "public_inspect", "debug"]
 
 EXPECTED_SYSLOG_DOCUMENT: dict[str, Any] = {
     "version": 1,
@@ -104,12 +105,6 @@ EXPECTED_SYSLOG_DOCUMENT: dict[str, Any] = {
             "formatter": "json_public_inspect",
             "filters": ["public_inspect_filter"],
         },
-        "syslog_debug": {
-            "class": "logging.handlers.SysLogHandler",
-            "address": ADDRESS,
-            "level": "INFO",
-            "formatter": "json_debug",
-        },
     },
     "loggers": {
         "app": {
@@ -119,25 +114,24 @@ EXPECTED_SYSLOG_DOCUMENT: dict[str, Any] = {
                 "syslog_app",
                 "syslog_siem",
                 "syslog_public_inspect",
-                "syslog_debug",
             ],
             "level": "INFO",
             "propagate": False,
         },
         "uvicorn": {
-            "handlers": ["console_app", "syslog_app", "syslog_debug"],
+            "handlers": ["console_app", "syslog_app"],
             "level": "INFO",
             "propagate": False,
         },
         "uvicorn.error": {
-            "handlers": ["console_app", "syslog_app", "syslog_debug"],
+            "handlers": ["console_app", "syslog_app"],
             "level": "INFO",
             "propagate": False,
         },
         "uvicorn.access": {"handlers": [], "level": "CRITICAL", "propagate": False},
         "inject": {"level": "INFO", "propagate": True},
     },
-    "root": {"handlers": ["syslog_debug"], "level": "INFO"},
+    "root": {"handlers": [], "level": "INFO"},
 }
 
 
@@ -208,7 +202,11 @@ class TestTheDefaultConsole:
 class TestTheLogLevel:
     def test_every_handler_applies_it(self) -> None:
         conf = build(
-            ConfigLogging(syslog_path=SYSLOG, console_streams=["app", "siem", "debug"]),
+            ConfigLogging(
+                syslog_path=SYSLOG,
+                console_streams=["app", "siem", "debug"],
+                syslog_streams=EVERY_SYSLOG_STREAM,
+            ),
             loglevel="WARNING",
         )
 
@@ -263,12 +261,7 @@ class TestConsoleStreamSelection:
         conf = build(ConfigLogging(syslog_path=SYSLOG, console_streams=[]))
 
         assert console_handlers(conf) == {}
-        assert conf["loggers"]["app"]["handlers"] == [
-            "syslog_app",
-            "syslog_siem",
-            "syslog_public_inspect",
-            "syslog_debug",
-        ]
+        assert conf["loggers"]["app"]["handlers"] == ["syslog_app", "syslog_siem", "syslog_public_inspect"]
 
     def test_a_stream_named_twice_still_gets_one_handler(self) -> None:
         conf = build(ConfigLogging(console_streams=["debug", "debug"]))
@@ -289,6 +282,11 @@ class TestIncludeTraces:
         for name in ("plain_app", "plain_siem", "plain_debug"):
             assert formatters[name]["include_traces"] is False
 
+    def test_disabling_traces_reaches_the_debug_stream_on_the_log_server(self) -> None:
+        formatters = build(ConfigLogging(include_traces=False))["formatters"]
+
+        assert formatters["json_debug"]["include_traces"] is False
+
 
 class TestSyslogHandlers:
     def test_no_syslog_handlers_are_added_without_a_path(self) -> None:
@@ -298,7 +296,7 @@ class TestSyslogHandlers:
         assert conf["loggers"]["app"]["handlers"] == ["console_app", "console_siem"]
 
     def test_each_stream_gets_its_own_handler_over_the_shared_channel(self) -> None:
-        handlers = build(ConfigLogging(syslog_path=SYSLOG))["handlers"]
+        handlers = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=EVERY_SYSLOG_STREAM))["handlers"]
 
         assert set(handlers) == {
             "console_app",
@@ -319,29 +317,23 @@ class TestSyslogHandlers:
         assert handlers["syslog_public_inspect"]["filters"] == ["public_inspect_filter"]
 
     def test_the_debug_handler_is_unfiltered_so_it_sees_everything(self) -> None:
-        handlers = build(ConfigLogging(syslog_path=SYSLOG))["handlers"]
+        handlers = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["debug"]))["handlers"]
 
         assert "filters" not in handlers["syslog_debug"]
 
     def test_parses_an_ipv6_host_correctly(self) -> None:
         handlers = build(ConfigLogging(syslog_path="fd00::1:5514"))["handlers"]
 
-        assert handlers["syslog_debug"]["address"] == ("fd00::1", 5514)
+        assert handlers["syslog_app"]["address"] == ("fd00::1", 5514)
 
     def test_a_debug_console_keeps_the_syslog_handlers(self) -> None:
         conf = build(ConfigLogging(syslog_path=SYSLOG, console_streams=["debug"]))
 
         assert conf["handlers"]["console_debug"]["formatter"] == "plain_debug"
-        assert set(conf["handlers"]) == {
-            "console_debug",
-            "syslog_app",
-            "syslog_siem",
-            "syslog_public_inspect",
-            "syslog_debug",
-        }
+        assert set(conf["handlers"]) == {"console_debug", "syslog_app", "syslog_siem", "syslog_public_inspect"}
 
     def test_only_the_debug_stream_reaches_the_root_logger(self) -> None:
-        conf = build(ConfigLogging(syslog_path=SYSLOG))
+        conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=EVERY_SYSLOG_STREAM))
 
         assert conf["root"]["handlers"] == ["syslog_debug"]
 
@@ -351,6 +343,48 @@ class TestSyslogHandlers:
         assert "syslog_siem" in conf["loggers"]["app"]["handlers"]
         assert "syslog_siem" not in conf["loggers"]["uvicorn"]["handlers"]
         assert "syslog_public_inspect" not in conf["loggers"]["uvicorn"]["handlers"]
+
+
+def syslog_handlers(conf: dict[str, Any]) -> list[str]:
+    return [name for name in conf["handlers"] if name.startswith("syslog")]
+
+
+class TestSyslogStreamSelection:
+    def test_the_debug_stream_stays_off_the_log_server_by_default(self) -> None:
+        conf = build(ConfigLogging(syslog_path=SYSLOG))
+
+        assert syslog_handlers(conf) == ["syslog_app", "syslog_siem", "syslog_public_inspect"]
+        assert conf["root"]["handlers"] == []
+
+    def test_selecting_debug_sends_every_logger_to_the_log_server(self) -> None:
+        conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["debug"], console_streams=[]))
+
+        for logger in ("app", "uvicorn", "uvicorn.error"):
+            assert conf["loggers"][logger]["handlers"] == ["syslog_debug"]
+        assert conf["root"]["handlers"] == ["syslog_debug"]
+
+    def test_an_explicit_selection_replaces_the_default_rather_than_adding_to_it(self) -> None:
+        conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["siem"]))
+
+        assert syslog_handlers(conf) == ["syslog_siem"]
+
+    def test_an_unknown_stream_is_rejected_rather_than_silently_ignored(self) -> None:
+        with pytest.raises(ValueError, match="nonsense"):
+            build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["nonsense"]))
+
+    def test_an_unknown_stream_is_rejected_before_a_log_server_is_configured(self) -> None:
+        with pytest.raises(ValueError, match="unknown syslog_streams"):
+            build(ConfigLogging(syslog_streams=["nonsense"]))
+
+    def test_an_empty_selection_sends_nothing_to_the_log_server(self) -> None:
+        conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=[]))
+
+        assert syslog_handlers(conf) == []
+
+    def test_a_stream_named_twice_still_gets_one_handler(self) -> None:
+        conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["debug", "debug"]))
+
+        assert conf["root"]["handlers"] == ["syslog_debug"]
 
 
 class TestLoggers:

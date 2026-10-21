@@ -39,7 +39,12 @@ def delivered(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
 def configure(loglevel: str = "INFO", logger_root: str = gflog.DEFAULT_LOGGER_ROOT) -> None:
     gflog.configure(
-        config=gflog.ConfigLogging(syslog_path="localhost:1514", application_id="routing-test", access_logs=True),
+        config=gflog.ConfigLogging(
+            syslog_path="localhost:1514",
+            application_id="routing-test",
+            access_logs=True,
+            syslog_streams=["app", "siem", "public_inspect", "debug"],
+        ),
         loglevel=loglevel,
         catalogue=CompleteCatalogue,
         logger_root=logger_root,
@@ -257,7 +262,7 @@ class TestApplicationId:
             catalogue=CompleteCatalogue,
         )
 
-        assert streams_reporting(delivered, "no application_id is configured") == {"app", "debug"}
+        assert streams_reporting(delivered, "no application_id is configured") == {"app"}
 
     def test_it_stays_quiet_when_nothing_reaches_syslog(self, delivered: list[dict[str, Any]]) -> None:
         gflog.configure(
@@ -308,3 +313,40 @@ class TestALoggerSetBelowTheLogLevel:
         logging.getLogger("sqlalchemy.engine.Engine").info("below the log level")
 
         assert "below the log level" not in capsys.readouterr().out
+
+
+def log_a_failure(secret: str) -> None:
+    try:
+        raise ValueError(secret)
+    except ValueError:
+        logging.getLogger("app.example").exception("failed")
+
+
+class TestTheDebugStreamOnTheLogServer:
+    def test_it_stays_off_unless_the_application_selects_it(self, delivered: list[dict[str, Any]]) -> None:
+        gflog.configure(
+            config=gflog.ConfigLogging(syslog_path="localhost:1514", application_id="routing-test"),
+            loglevel="INFO",
+            catalogue=CompleteCatalogue,
+        )
+
+        log_a_failure("value that must not be logged")
+
+        assert "value that must not be logged" not in json.dumps(delivered)
+
+    def test_it_leaves_tracebacks_out_when_traces_are_disabled(self, delivered: list[dict[str, Any]]) -> None:
+        gflog.configure(
+            config=gflog.ConfigLogging(
+                syslog_path="localhost:1514",
+                application_id="routing-test",
+                syslog_streams=["debug"],
+                include_traces=False,
+            ),
+            loglevel="INFO",
+            catalogue=CompleteCatalogue,
+        )
+
+        log_a_failure("value that must not be logged")
+
+        assert {payload["event_description"] for payload in delivered} == {"failed"}
+        assert "value that must not be logged" not in json.dumps(delivered)
