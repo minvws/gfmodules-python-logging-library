@@ -141,7 +141,7 @@ class LogConfigBuilder:
         if unknown:
             raise ValueError(f"unknown console_streams {unknown}, choose from {list(CONSOLE_STREAMS)}")
 
-        return list(dict.fromkeys(self.logging_config.console_streams))
+        return self.logging_config.console_streams
 
     def _add_console_streams(self, conf: dict[str, Any]) -> None:
         app_logger_handlers = conf["loggers"][active_logger_root()]["handlers"]

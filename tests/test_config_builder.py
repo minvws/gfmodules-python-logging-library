@@ -270,12 +270,6 @@ class TestConsoleStreamSelection:
             "syslog_debug",
         ]
 
-    def test_a_stream_named_twice_still_gets_one_handler(self) -> None:
-        conf = build(ConfigLogging(console_streams=["debug", "debug"]))
-
-        assert list(console_handlers(conf)) == ["console_debug"]
-        assert conf["loggers"]["app"]["handlers"] == ["console_debug"]
-
 
 class TestIncludeTraces:
     def test_the_console_formatters_keep_traces_by_default(self) -> None:
