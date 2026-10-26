@@ -16,7 +16,7 @@ def _selected(setting: str, names: list[str], choices: tuple[str, ...]) -> list[
     if unknown:
         raise ValueError(f"unknown {setting} {unknown}, choose from {list(choices)}")
 
-    return list(dict.fromkeys(names))
+    return names
 
 
 def _at_least(loglevel: str, floor: int) -> str:

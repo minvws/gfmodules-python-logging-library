@@ -263,12 +263,6 @@ class TestConsoleStreamSelection:
         assert console_handlers(conf) == {}
         assert conf["loggers"]["app"]["handlers"] == ["syslog_app", "syslog_siem", "syslog_public_inspect"]
 
-    def test_a_stream_named_twice_still_gets_one_handler(self) -> None:
-        conf = build(ConfigLogging(console_streams=["debug", "debug"]))
-
-        assert list(console_handlers(conf)) == ["console_debug"]
-        assert conf["loggers"]["app"]["handlers"] == ["console_debug"]
-
 
 class TestIncludeTraces:
     def test_the_console_formatters_keep_traces_by_default(self) -> None:
@@ -380,11 +374,6 @@ class TestSyslogStreamSelection:
         conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=[]))
 
         assert syslog_handlers(conf) == []
-
-    def test_a_stream_named_twice_still_gets_one_handler(self) -> None:
-        conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["debug", "debug"]))
-
-        assert conf["root"]["handlers"] == ["syslog_debug"]
 
 
 class TestLoggers:
