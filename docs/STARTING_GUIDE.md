@@ -133,8 +133,9 @@ application's own config module makes every import of it from there fail.
 | --- | --- |
 | `syslog_path` | `host:port`; unset means console only |
 | `application_id` | stamped on every JSON record so the log server can tell applications apart; omitted entirely when unset, so set it wherever `syslog_path` is set |
-| `include_traces` | include tracebacks in the console stream |
+| `include_traces` | include tracebacks in the console streams and in the debug stream on the log server |
 | `console_streams` | which streams reach stdout, from `app`, `siem` and `debug`; defaults to `["app", "siem"]`, and empty silences stdout |
+| `syslog_streams` | which streams reach the log server, from `app`, `siem`, `public_inspect` and `debug`; defaults to `["app", "siem", "public_inspect"]`, so the debug stream stays off the log server unless selected |
 | `correlation_id_expected` | log when a request arrives without a correlation id |
 | `trust_forwarded_for` | read the client ip from `X-Forwarded-For`; only where a proxy rewrites it |
 | `access_logs` | log a record per request; **on by default** once `RequestContextMiddleware` is added (see step 3) |
@@ -158,10 +159,10 @@ which for a container service name means from inside the compose network.
 
 ### Loading list settings from INI files
 
-`console_streams` is `list[str]`; pydantic does not turn a plain string into a
-list, so a `ConfigLogging` populated from an INI file (where every value is a
-string) needs the setting to arrive already split. An application loading its
-own config from INI opts the field in explicitly:
+`console_streams` and `syslog_streams` are `list[str]`; pydantic does not turn a
+plain string into a list, so a `ConfigLogging` populated from an INI file (where
+every value is a string) needs them to arrive already split. An application
+loading its own config from INI opts each field in explicitly:
 
 ```python
 from gfmodules.logging import ConfigLogging as GFConfigLogging
@@ -170,6 +171,9 @@ from pydantic import field_validator
 
 class ConfigLogging(GFConfigLogging):
     _split_console_streams = field_validator("console_streams", mode="before")(
+        split_comma_separated()
+    )
+    _split_syslog_streams = field_validator("syslog_streams", mode="before")(
         split_comma_separated()
     )
 ```
@@ -218,6 +222,20 @@ ConfigLogging(syslog_path="log-server:5514", console_streams=[])       # silence
 
 An empty list silences stdout, leaving Python's own WARNING-and-above handler
 on stderr. Silencing stdout with no `syslog_path` set leaves no handlers at all.
+
+### What reaches the log server
+
+Each selected stream goes to the log server as JSON over the shared syslog
+channel, tagged with its `stream_id`. By default those are the app, SIEM and
+public-inspect streams. The debug stream has no filter and no field allow-list,
+so it carries every record with every field, request bodies included, and it
+reaches the log server only when the application selects it:
+
+```python
+ConfigLogging(syslog_path="log-server:5514", syslog_streams=["app", "siem", "public_inspect", "debug"])
+```
+
+`include_traces=False` keeps tracebacks out of the debug stream as well.
 
 `configure()` builds its dict config through `LogConfigBuilder`, which is
 exported for an application that needs to inspect or extend it.
