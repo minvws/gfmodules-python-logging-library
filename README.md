@@ -85,8 +85,8 @@ The library provides context managers and utilities (no pytest dependency):
 
 ```python
 from gfmodules.logging.testing import (
-    assert_catalogue_complete, assert_event_emitted, assert_fields_absent,
-    capture_records, capture_stream, recorded_shutdown_reason, reset_for_tests,
+    assert_catalogue_complete, assert_event_emitted, assert_event_overview_current,
+    assert_fields_absent, capture_records, capture_stream, recorded_shutdown_reason, reset_for_tests,
 )
 ```
 
@@ -111,6 +111,21 @@ the real stream filter and formatter. Use `strict_fields=True` in tests to catch
 typos (fields that no stream carries).
 
 See [docs/STARTING_GUIDE.md](docs/STARTING_GUIDE.md#testing) for detailed testing examples.
+
+## Event Overview
+
+`gfmodules.logging.event_overview` renders the catalogue as a markdown overview of
+what the application logs: per stream, each event with its id, level and fields.
+Commit it, and a change to the logged events or fields shows up in the diff of the
+pull request that makes it.
+
+```sh
+python -m gfmodules.logging.event_overview my_app.events:Log > docs/log-events.md
+```
+
+`assert_event_overview_current(Log, "docs/log-events.md")` fails once the file no
+longer matches the catalogue. See
+[docs/STARTING_GUIDE.md](docs/STARTING_GUIDE.md#7-publish-an-overview-of-the-events).
 
 ## Record Format
 

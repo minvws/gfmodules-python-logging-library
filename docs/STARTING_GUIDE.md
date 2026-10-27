@@ -380,3 +380,34 @@ single bound value, `collect_context()` returns them all as a dict:
 ```python
 correlation_id = gflog.collect_context().get("correlation_id")
 ```
+
+## 7. Publish an overview of the events
+
+The catalogue is also the documentation of what the application logs.
+`gfmodules.logging.event_overview` renders it as markdown: the context fields
+every record carries, then per stream each event that reaches it, with its id,
+level and the fields it carries there, and the per-route access event ids.
+Generate it from the directory the application's modules import from:
+
+```sh
+python -m gfmodules.logging.event_overview my_app.events:Log > docs/log-events.md
+```
+
+Commit the file. The output is the same for the same catalogue, so its diff in a
+pull request shows exactly the events and fields that change, which is what the
+team reviews and what the SIEM side adjusts its log handling to.
+
+Keep it in step with the catalogue from the test suite. The assertion fails with
+the command that regenerates the file:
+
+```python
+from gfmodules.logging.testing import assert_event_overview_current
+
+def test_event_overview_is_current():
+    assert_event_overview_current(Log, "docs/log-events.md")
+```
+
+An application with `access_logs=False` passes `access_logs=False` to the
+assertion and `--no-access-logs` to the command, so the overview leaves out the
+access events it never emits. `render_event_overview(Log)` returns the same
+markdown as a string.
