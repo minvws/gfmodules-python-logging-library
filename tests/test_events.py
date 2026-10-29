@@ -447,6 +447,16 @@ class TestAddFields:
         assert unrouted_fields(unrouted, ["owner_id"]) == ()
         assert unrouted_fields(event, ["owner_id"]) == ("owner_id",)
 
+    def test_only_an_always_kept_context_field_is_routed_without_an_allow_list(self) -> None:
+        register_context_fields(
+            (
+                ContextField(name="tenant_id", header="X-Tenant-Id"),
+                ContextField(name="caller_id", header="X-Caller-Id", always_keep=True),
+            )
+        )
+
+        assert unrouted_fields(CompleteCatalogue.RESOURCE_CREATED, ["tenant_id", "caller_id"]) == ("tenant_id",)
+
 
 class TestUnsetEventIds:
     def test_the_default_catalogue_leaves_every_id_but_access_request_unset(self) -> None:

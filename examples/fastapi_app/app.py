@@ -18,9 +18,6 @@ from gfmodules.logging.middleware import RequestContextMiddleware, restore_reque
 
 logger = logging.getLogger("app.api")
 
-# Declaring the field is what makes the header survive to the record.
-TENANT_ID = gflog.ContextField(name="tenant_id", header="X-Tenant-Id")
-
 
 class CreateResource(BaseModel):
     resource_id: str
@@ -36,7 +33,6 @@ def setup_logging(settings: Settings, *, strict_fields: bool = False) -> None:
         config=settings.logging,
         loglevel=settings.app.loglevel,
         catalogue=Log,
-        extra_context_fields=(TENANT_ID,),
         strict_fields=strict_fields,
     )
     gflog.install_excepthook(logger)

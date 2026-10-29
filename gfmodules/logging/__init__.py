@@ -5,7 +5,6 @@ an optional extra, so applications import them directly.
 """
 
 import logging
-from collections.abc import Sequence
 from logging.config import dictConfig
 
 from gfmodules.logging.config import ConfigLogging
@@ -120,7 +119,6 @@ def configure(
     config: ConfigLogging,
     loglevel: str,
     catalogue: type[EventCatalogue],
-    extra_context_fields: Sequence[ContextField] = (),
     strict_fields: bool = False,
     logger_root: str = DEFAULT_LOGGER_ROOT,
 ) -> None:
@@ -133,7 +131,7 @@ def configure(
 
     validate_catalogue(catalogue, access_logs=config.access_logs)
     set_strict_fields(strict_fields)
-    register_context_fields(extra_context_fields)
+    register_context_fields(catalogue.context_fields)
     register_access_logs(config.access_logs)
     register_catalogue(catalogue, access_logs=config.access_logs)
     register_logger_root(logger_root)

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Changed (breaking)
+
+- Context fields an application declares are now declared on the catalogue as
+  `context_fields` instead of passed to `configure()` as
+  `extra_context_fields`, which is removed. The event overview reads them from
+  there, so it now lists them with the context fields.
+- `ALWAYS_KEEP_FIELDS` is removed, since which fields every stream keeps now
+  depends on the catalogue. `always_kept_field_names()` returns them.
+
+### Added
+
+- `always_keep` on `ContextField`. A declared context field with
+  `always_keep=True` reaches every stream an event routes to, like the standard
+  ones, without an entry in each allow-list. Without it, a declared field still
+  reaches only the streams whose allow-list names it.
+
 ## 0.6.0 - 2026-10-29
 
 ### Changed (breaking)

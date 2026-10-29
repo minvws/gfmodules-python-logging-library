@@ -7,7 +7,7 @@ import logging
 from collections.abc import Mapping
 from typing import ClassVar
 
-from gfmodules.logging import DefaultEventCatalogue, LogEvent, LoggingStreams
+from gfmodules.logging import ContextField, DefaultEventCatalogue, LogEvent, LoggingStreams
 
 APP = LoggingStreams.APP
 SIEM = LoggingStreams.SIEM
@@ -16,6 +16,9 @@ Base = DefaultEventCatalogue
 
 
 class Log(Base):
+    # Declaring the field is what makes the header survive to the record.
+    context_fields = (ContextField(name="tenant_id", header="X-Tenant-Id"),)
+
     # The system events: this system's ids, the library's routing. Leaving one
     # out fails in configure(), naming the slot.
     SYS_APP_STARTED = Base.SYS_APP_STARTED.with_id("100601")
