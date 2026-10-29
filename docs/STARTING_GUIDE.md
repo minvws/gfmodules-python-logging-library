@@ -72,10 +72,26 @@ Subclass `EventCatalogue` instead to start from nothing, declaring routing as
 well as ids for all of `REQUIRED_EVENTS`.
 
 `fields` is a **per-stream allow-list**. A field not listed for a stream never
-reaches it, which is what keeps application detail out of SIEM. Correlation
-metadata (`request_id`, `ip`, `user_agent`, `client_trace_id`, `correlation_id`)
-is always retained. An event with no `fields` sends everything to every stream it
-declares.
+reaches it, which is what keeps application detail out of SIEM. The standard
+context fields (`request_id`, `ip`, `user_agent`, `client_trace_id`,
+`correlation_id`, `endpoint`, `method`, `scope`) are always retained. An event
+with no `fields` sends everything to every stream it declares.
+
+Declare a context field of the application's own on the catalogue. It is read
+from its header on every request, and like any other field it reaches only the
+streams whose allow-list names it. With `always_keep=True` it reaches every
+stream an event routes to, like the standard ones, so set that only for what
+every stream, SIEM included, may carry:
+
+```python
+from gfmodules.logging import ContextField
+
+class Log(Base):
+    context_fields = (
+        ContextField(name="tenant_id", header="X-Tenant-Id"),
+        ContextField(name="caller_id", header="X-Caller-Id", always_keep=True),
+    )
+```
 
 Field names in `RESERVED_FIELDS` cannot be used: the standard library refuses to
 overwrite its own `LogRecord` attributes, so `name`, `module`, `lineno` and the
@@ -104,7 +120,6 @@ gflog.configure(
     config=config.logging,          # a gflog.ConfigLogging
     loglevel=config.app.loglevel,
     catalogue=Log,
-    extra_context_fields=(gflog.ContextField(name="tenant_id", header="X-Tenant-Id"),),
     strict_fields=False,            # True in the test suite, see Testing
 )
 ```
@@ -371,7 +386,7 @@ with update_context({"tenant_id": subject.tenant}):
 ```
 
 A field only survives to the record if it was declared, either as a standard
-field or through `extra_context_fields`.
+field or in the catalogue's `context_fields`.
 
 `correlation_headers()` returns the correlation id and client trace id as
 headers, to pass to a downstream call so the trace does not end here. To read a

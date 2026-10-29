@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from gfmodules.logging.context import ALWAYS_KEEP_FIELDS, collect_context
+from gfmodules.logging.context import always_kept_field_names, collect_context
 from gfmodules.logging.events import RESERVED_FIELDS
 from gfmodules.logging.streams import LoggingStreams
 
@@ -19,7 +19,7 @@ def _allowed_on(
     field_streams: dict[LoggingStreams, tuple[str, ...]] | None = getattr(record, "field_streams", None)
     if stream is None or not field_streams:
         return data
-    allowed = set(field_streams.get(stream, ())) | ALWAYS_KEEP_FIELDS
+    allowed = set(field_streams.get(stream, ())) | always_kept_field_names()
     return {key: value for key, value in data.items() if key in allowed}
 
 

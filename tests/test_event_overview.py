@@ -6,6 +6,7 @@ from typing import ClassVar
 
 import pytest
 
+from gfmodules.logging.context import ContextField
 from gfmodules.logging.event_overview import main, render_event_overview
 from gfmodules.logging.events import EventCatalogue, LogEvent
 from gfmodules.logging.streams import LoggingStreams
@@ -26,6 +27,10 @@ class Catalogue(EventCatalogue):
     ACCESS_REQUEST = LogEvent("100", logging.INFO, (APP,), {APP: ("status_code",)})
 
     access_event_id: ClassVar[Mapping[tuple[str, str], str]] = {("POST", "/resources"): "100710"}
+    context_fields = (
+        ContextField(name="tenant_id", header="X-Tenant-Id", always_keep=True),
+        ContextField(name="session_id", header="X-Session-Id"),
+    )
 
 
 class UnroutedCatalogue(EventCatalogue):
@@ -57,6 +62,11 @@ Every event carries these on every stream, whenever the request context holds a 
 - `endpoint`
 - `method`
 - `scope`
+- `tenant_id`
+
+The request context also holds these, but an event carries them only on the streams whose fields name them.
+
+- `session_id`
 
 ## Stream `app`
 
@@ -85,6 +95,11 @@ Every event carries these on every stream, whenever the request context holds a 
 class TestRenderEventOverview:
     def test_lists_each_streams_events_with_their_fields(self) -> None:
         assert render_event_overview(Catalogue) == OVERVIEW
+
+    def test_without_allow_listed_context_fields_only_the_always_kept_ones_are_listed(self) -> None:
+        overview = render_event_overview(UnroutedCatalogue)
+
+        assert "The request context also holds these" not in overview
 
     def test_an_event_without_an_allow_list_carries_any_field(self) -> None:
         overview = render_event_overview(UnroutedCatalogue)
