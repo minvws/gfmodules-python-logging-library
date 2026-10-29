@@ -13,6 +13,7 @@ Read it in this order:
 | file | what it shows |
 | --- | --- |
 | [fastapi_app/events.py](fastapi_app/events.py) | the event catalogue: required slots, the application's own events, per-stream field allow-lists, an alias, per-route access ids |
+| [fastapi_app/events.md](fastapi_app/events.md) | the overview generated from that catalogue, the file a team and its SIEM side diff |
 | [fastapi_app/config.py](fastapi_app/config.py) | `ConfigLogging` composed into the application's own settings |
 | [fastapi_app/app.py](fastapi_app/app.py) | the whole integration: `configure()`, the middleware, the lifespan, the exception handler |
 | [fastapi_app/service.py](fastapi_app/service.py) | ordinary domain code that logs, and the `stacklevel` idiom for a wrapper |
@@ -28,6 +29,12 @@ poetry run pytest examples
 ```
 
 `poetry run pytest` runs it too, after the library's own suite.
+
+To regenerate the event overview after changing the catalogue, from `examples/`:
+
+```sh
+poetry run python -m gfmodules.logging.event_overview fastapi_app.events:Log > fastapi_app/events.md
+```
 
 ## Wiring your own application
 

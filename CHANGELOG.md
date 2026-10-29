@@ -21,6 +21,11 @@
   `public_inspect`, `debug`) reach the log server. It defaults to
   `["app", "siem", "public_inspect"]`. An empty list sends nothing; an unknown
   stream name fails at boot.
+- `gfmodules.logging.event_overview` renders an event catalogue as a markdown
+  overview to commit and diff: per stream, each event with its id, level and
+  fields, plus the context fields and the per-route access event ids. Generate it
+  with `python -m gfmodules.logging.event_overview my_app.events:Log`, and keep it
+  current with `assert_event_overview_current` from `gfmodules.logging.testing`.
 
 ### Fixed
 

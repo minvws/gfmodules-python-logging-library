@@ -1,5 +1,6 @@
 """The tests an application should have about its own logging."""
 
+from pathlib import Path
 from typing import Any
 
 from starlette.testclient import TestClient
@@ -11,6 +12,7 @@ from gfmodules.logging import LoggingStreams
 from gfmodules.logging.testing import (
     assert_catalogue_complete,
     assert_event_emitted,
+    assert_event_overview_current,
     assert_fields_absent,
     capture_records,
     capture_stream,
@@ -23,6 +25,9 @@ class TestCatalogue:
     def test_every_required_event_is_defined(self) -> None:
         """A missing slot is invisible to a type checker, so it is caught here."""
         assert_catalogue_complete(Log)
+
+    def test_the_event_overview_is_current(self) -> None:
+        assert_event_overview_current(Log, Path(__file__).with_name("events.md"))
 
 
 class TestRequestContext:

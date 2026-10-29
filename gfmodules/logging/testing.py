@@ -10,9 +10,11 @@ import logging
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from gfmodules.logging.context import register_context_fields
+from gfmodules.logging.event_overview import overview_command, render_event_overview
 from gfmodules.logging.events import EventCatalogue, LogEvent, missing_events, set_strict_fields, unset_event_ids
 from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter
@@ -26,6 +28,7 @@ __all__ = [
     "CapturedRecords",
     "assert_catalogue_complete",
     "assert_event_emitted",
+    "assert_event_overview_current",
     "assert_fields_absent",
     "capture_records",
     "capture_stream",
@@ -197,6 +200,20 @@ def assert_catalogue_complete(catalogue: type[EventCatalogue], *, access_logs: b
 
     unset = unset_event_ids(catalogue, access_logs=access_logs)
     assert not unset, f"{catalogue.__name__} declares events with no event id: {', '.join(unset)}"
+
+
+def assert_event_overview_current(
+    catalogue: type[EventCatalogue],
+    path: str | Path,
+    *,
+    access_logs: bool = True,
+) -> None:
+    path = Path(path)
+    written = path.read_text(encoding="utf-8") if path.exists() else None
+    assert written == render_event_overview(catalogue, access_logs=access_logs), (
+        f"{path} does not match {catalogue.__name__}; regenerate it with: "
+        f"{overview_command(catalogue, access_logs=access_logs)} > {path}"
+    )
 
 
 def assert_event_emitted(
