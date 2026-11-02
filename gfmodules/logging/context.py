@@ -48,16 +48,17 @@ class ContextField:
     header: str | None
     sanitize: bool = True
     sanitizer: Callable[[str], str] = sanitize_header_value
+    always_keep: bool = False
 
 
-REQUEST_ID = ContextField(name="request_id", header=None)
-IP = ContextField(name="ip", header=None)
-USER_AGENT = ContextField(name="user_agent", header=USER_AGENT_HEADER, sanitizer=sanitize_free_text)
-CLIENT_TRACE_ID = ContextField(name="client_trace_id", header=CLIENT_TRACE_ID_HEADER)
-CORRELATION_ID = ContextField(name="correlation_id", header=CORRELATION_ID_HEADER)
-ENDPOINT = ContextField(name="endpoint", header=None)
-METHOD = ContextField(name="method", header=None)
-SCOPE = ContextField(name="scope", header=SCOPE_HEADER, sanitizer=sanitize_free_text)
+REQUEST_ID = ContextField(name="request_id", header=None, always_keep=True)
+IP = ContextField(name="ip", header=None, always_keep=True)
+USER_AGENT = ContextField(name="user_agent", header=USER_AGENT_HEADER, sanitizer=sanitize_free_text, always_keep=True)
+CLIENT_TRACE_ID = ContextField(name="client_trace_id", header=CLIENT_TRACE_ID_HEADER, always_keep=True)
+CORRELATION_ID = ContextField(name="correlation_id", header=CORRELATION_ID_HEADER, always_keep=True)
+ENDPOINT = ContextField(name="endpoint", header=None, always_keep=True)
+METHOD = ContextField(name="method", header=None, always_keep=True)
+SCOPE = ContextField(name="scope", header=SCOPE_HEADER, sanitizer=sanitize_free_text, always_keep=True)
 
 # Order matters: it is the order these keys appear in every emitted record.
 STANDARD_FIELDS: tuple[ContextField, ...] = (
@@ -70,8 +71,6 @@ STANDARD_FIELDS: tuple[ContextField, ...] = (
     METHOD,
     SCOPE,
 )
-
-ALWAYS_KEEP_FIELDS: frozenset[str] = frozenset(field.name for field in STANDARD_FIELDS)
 
 _fields: tuple[ContextField, ...] = STANDARD_FIELDS
 _context_var: ContextVar[Mapping[str, str] | None] = ContextVar("gfmodules_logging_context", default=None)
@@ -90,6 +89,14 @@ def register_context_fields(extra: Sequence[ContextField]) -> None:
 
 def registered_fields() -> tuple[ContextField, ...]:
     return _fields
+
+
+def registered_field_names() -> frozenset[str]:
+    return frozenset(field.name for field in _fields)
+
+
+def always_kept_field_names() -> frozenset[str]:
+    return frozenset(field.name for field in _fields if field.always_keep)
 
 
 def extract_context(headers: Mapping[str, str]) -> dict[str, str]:
@@ -123,7 +130,7 @@ def bind_context(values: Mapping[str, Any]) -> Generator[None]:
 def update_context(values: Mapping[str, Any]) -> Generator[None]:
     """Adds to the bound context instead of replacing it.
 
-    The field still has to be declared through :func:`register_context_fields`,
+    The field still has to be declared in the catalogue's ``context_fields``,
     or nothing collects it.
     """
     context_mapping = _context_var.get() or {}

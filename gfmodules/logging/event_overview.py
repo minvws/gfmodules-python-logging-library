@@ -4,7 +4,7 @@ import logging
 import sys
 from collections.abc import Iterable, Sequence
 
-from gfmodules.logging.context import STANDARD_FIELDS
+from gfmodules.logging.context import STANDARD_FIELDS, ContextField
 from gfmodules.logging.events import EventCatalogue, LogEvent, _excused_events, declared_events
 from gfmodules.logging.streams import LoggingStreams
 
@@ -14,6 +14,10 @@ Each stream lists the events that reach it and the fields they carry there besid
 *none* means the event carries only the context fields there."""
 
 _CONTEXT_INTRO = "Every event carries these on every stream, whenever the request context holds a value for them."
+
+_ALLOW_LISTED_CONTEXT_INTRO = (
+    "The request context also holds these, but an event carries them only on the streams whose fields name them."
+)
 
 _ACCESS_INTRO = "`ACCESS_REQUEST` carries these ids instead of its own on these routes."
 
@@ -50,6 +54,20 @@ def _stream_section(stream: LoggingStreams, events: Sequence[tuple[str, LogEvent
     return _section(f"Stream `{stream.name.lower()}`", _table(("Event", "Id", "Level", "Fields"), rows))
 
 
+def _field_list(fields: Iterable[ContextField]) -> str:
+    return "\n".join(f"- `{field.name}`" for field in fields)
+
+
+def _context_section(catalogue: type[EventCatalogue]) -> str:
+    fields = (*STANDARD_FIELDS, *catalogue.context_fields)
+    kept = [field for field in fields if field.always_keep]
+    allow_listed = [field for field in fields if not field.always_keep]
+    paragraphs = [_CONTEXT_INTRO, _field_list(kept)]
+    if allow_listed:
+        paragraphs += [_ALLOW_LISTED_CONTEXT_INTRO, _field_list(allow_listed)]
+    return _section("Context fields", *paragraphs)
+
+
 def _access_section(catalogue: type[EventCatalogue]) -> str:
     rows = [(method, f"`{route}`", event_id) for (method, route), event_id in catalogue.access_event_id.items()]
     return _section("Access event ids per route", _ACCESS_INTRO, _table(("Method", "Route", "Id"), rows))
@@ -66,7 +84,7 @@ def render_event_overview(catalogue: type[EventCatalogue], *, access_logs: bool 
             _LEGEND,
         )
     )
-    context = _section("Context fields", _CONTEXT_INTRO, "\n".join(f"- `{field.name}`" for field in STANDARD_FIELDS))
+    context = _context_section(catalogue)
     reaching = {
         stream: [(name, event) for name, event in events if stream in event.streams] for stream in LoggingStreams
     }

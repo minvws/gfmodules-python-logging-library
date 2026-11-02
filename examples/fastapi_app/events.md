@@ -22,6 +22,10 @@ Every event carries these on every stream, whenever the request context holds a 
 - `method`
 - `scope`
 
+The request context also holds these, but an event carries them only on the streams whose fields name them.
+
+- `tenant_id`
+
 ## Stream `app`
 
 | Event | Id | Level | Fields |

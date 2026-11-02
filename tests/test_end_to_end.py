@@ -26,6 +26,12 @@ from gfmodules.logging.testing import assert_event_emitted, assert_fields_absent
 from tests.helpers.catalogue import CompleteCatalogue, IncompleteCatalogue
 
 TENANT_ID = gflog.ContextField(name="tenant_id", header="X-Tenant-Id")
+CALLER_ID = gflog.ContextField(name="caller_id", header="X-Caller-Id", always_keep=True)
+
+
+class ContextCatalogue(CompleteCatalogue):
+    context_fields = (TENANT_ID, CALLER_ID)
+
 
 logger = logging.getLogger("app.service")
 
@@ -71,8 +77,7 @@ def configured() -> Iterator[None]:
     gflog.configure(
         config=gflog.ConfigLogging(application_id="example-service", access_logs=True),
         loglevel="info",
-        catalogue=CompleteCatalogue,
-        extra_context_fields=(TENANT_ID,),
+        catalogue=ContextCatalogue,
     )
     logger.handlers = []
     logger.propagate = True
@@ -118,8 +123,7 @@ class TestRequestLifecycle:
         gflog.configure(
             config=gflog.ConfigLogging(application_id="example-service", access_logs=False),
             loglevel="info",
-            catalogue=CompleteCatalogue,
-            extra_context_fields=(TENANT_ID,),
+            catalogue=ContextCatalogue,
         )
 
         with capture_records() as captured, TestClient(build_app()) as client:
@@ -136,6 +140,14 @@ class TestStreamSeparation:
 
         assert_fields_absent(siem, "owner_id", "created_by", "config_path", "version")
         assert any(message.get("resource_id") == "12345" for message in siem)
+
+    def test_only_an_always_kept_context_field_reaches_a_stream_that_does_not_allow_list_it(self) -> None:
+        with capture_stream(LoggingStreams.SIEM) as siem, TestClient(build_app()) as client:
+            client.get("/resources", headers={"X-Tenant-Id": "t-1", "X-Caller-Id": "c-1"})
+
+        created = [message for message in siem if message.get("resource_id")]
+        assert created[0]["caller_id"] == "c-1"
+        assert "tenant_id" not in created[0]
 
     def test_the_app_stream_receives_the_wider_set(self) -> None:
         with capture_stream(LoggingStreams.APP) as app_stream, TestClient(build_app()) as client:

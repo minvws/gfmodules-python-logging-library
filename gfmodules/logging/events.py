@@ -11,7 +11,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Self
 
-from gfmodules.logging.context import ALWAYS_KEEP_FIELDS, registered_fields
+from gfmodules.logging.context import ContextField, always_kept_field_names, registered_field_names
 from gfmodules.logging.loggers import report_outside_root, within_root
 from gfmodules.logging.streams import LoggingStreams
 
@@ -156,7 +156,7 @@ def set_strict_fields(enabled: bool) -> None:
 def unrouted_fields(event: LogEvent, names: Iterable[str]) -> tuple[str, ...]:
     if not event.fields:
         return ()
-    allowed = {name for allow_list in event.fields.values() for name in allow_list} | ALWAYS_KEEP_FIELDS
+    allowed = {name for allow_list in event.fields.values() for name in allow_list} | always_kept_field_names()
     return tuple(sorted(set(names) - allowed))
 
 
@@ -179,7 +179,7 @@ def emit(
     if reserved:
         raise ValueError(f"event {event.event_id} names fields a log record reserves: {', '.join(reserved)}")
 
-    context_fields = sorted({context_field.name for context_field in registered_fields()} & values.keys())
+    context_fields = sorted(registered_field_names() & values.keys())
     if context_fields:
         raise ValueError(
             f"event {event.event_id} names fields the request context already binds: {', '.join(context_fields)}. "
@@ -214,6 +214,8 @@ class EventCatalogue:
 
     #: (method, route path) -> event id, for routes with an access id of their own.
     access_event_id: ClassVar[Mapping[tuple[str, str], str]] = {}
+
+    context_fields: ClassVar[tuple[ContextField, ...]] = ()
 
     @classmethod
     def event(

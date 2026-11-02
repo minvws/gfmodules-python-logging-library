@@ -276,6 +276,12 @@ class TestStreamRouting:
         assert "tenant_id" not in self.siem_message()
         assert "tenant_id" not in self.app_message()
 
+    def test_an_always_kept_context_field_survives_routing_on_every_stream(self) -> None:
+        register_context_fields((ContextField(name="tenant_id", header="X-Tenant-Id", always_keep=True),))
+
+        for message in (self.app_message(), self.siem_message()):
+            assert message["tenant_id"] == "t-1"
+
     def test_routing_is_skipped_when_the_event_declares_no_field_streams(self) -> None:
         message = self.siem_message(with_field_streams=False)
 

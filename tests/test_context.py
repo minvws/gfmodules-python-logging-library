@@ -1,18 +1,19 @@
 import pytest
 
 from gfmodules.logging.context import (
-    ALWAYS_KEEP_FIELDS,
     CLIENT_TRACE_ID_HEADER,
     CORRELATION_ID_HEADER,
     STANDARD_FIELDS,
     UNSET,
     USER_AGENT_HEADER,
     ContextField,
+    always_kept_field_names,
     bind_context,
     collect_context,
     correlation_headers,
     extract_context,
     register_context_fields,
+    registered_field_names,
     registered_fields,
     sanitize_free_text,
     sanitize_header_value,
@@ -35,6 +36,17 @@ class TestRegistration:
         register_context_fields((TENANT_ID,))
 
         assert registered_fields() == (*STANDARD_FIELDS, TENANT_ID)
+
+    def test_the_registered_names_cover_the_standard_fields_and_the_extras(self) -> None:
+        register_context_fields((TENANT_ID,))
+
+        assert registered_field_names() == {field.name for field in STANDARD_FIELDS} | {"tenant_id"}
+
+    def test_an_extra_is_always_kept_only_when_it_says_so(self) -> None:
+        caller = ContextField(name="caller_id", header="X-Caller-Id", always_keep=True)
+        register_context_fields((TENANT_ID, caller))
+
+        assert always_kept_field_names() == {field.name for field in STANDARD_FIELDS} | {"caller_id"}
 
     def test_registering_replaces_the_previous_extras(self) -> None:
         register_context_fields((TENANT_ID,))
@@ -223,7 +235,7 @@ class TestStandardFields:
         assert "ip" not in extract_context({"X-Forwarded-For": "203.0.113.7"})
 
     def test_the_always_kept_fields_are_request_and_correlation_metadata(self) -> None:
-        assert ALWAYS_KEEP_FIELDS == {
+        assert always_kept_field_names() == {
             "request_id",
             "ip",
             "user_agent",
