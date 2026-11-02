@@ -188,11 +188,7 @@ class TestExcepthook:
 
 class TestSignalHandlers:
     def test_records_the_signal_that_asked_us_to_stop(self) -> None:
-        with _restored_signals():
-            install_signal_handlers((signal.SIGTERM,))
-            handler = signal.getsignal(signal.SIGTERM)
-            assert callable(handler)
-            handler(signal.SIGTERM, None)
+        _record_signal_shutdown()
 
         assert shutdown_reason() == "signal:SIGTERM"
 
@@ -208,7 +204,10 @@ class TestSignalHandlers:
 
         assert called == [signal.SIGTERM]
 
-    def test_survives_a_signal_with_no_installed_handler(self) -> None:
+    def test_gives_a_signal_with_no_installed_handler_its_default_action(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        raised: list[tuple[int, Any]] = []
+        monkeypatch.setattr(signal, "raise_signal", lambda sig: raised.append((sig, signal.getsignal(sig))))
+
         with _restored_signals():
             signal.signal(signal.SIGTERM, signal.SIG_DFL)
             install_signal_handlers((signal.SIGTERM,))
@@ -217,6 +216,21 @@ class TestSignalHandlers:
             handler(signal.SIGTERM, None)
 
         assert shutdown_reason() == "signal:SIGTERM"
+        assert raised == [(signal.SIGTERM, signal.SIG_DFL)]
+
+    def test_keeps_an_ignored_signal_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        raised: list[int] = []
+        monkeypatch.setattr(signal, "raise_signal", raised.append)
+
+        with _restored_signals():
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            install_signal_handlers((signal.SIGTERM,))
+            handler = signal.getsignal(signal.SIGTERM)
+            assert callable(handler)
+            handler(signal.SIGTERM, None)
+
+        assert shutdown_reason() == "signal:SIGTERM"
+        assert raised == []
 
     def test_reports_a_handler_it_could_not_install(
         self, records: RecordingHandler, monkeypatch: pytest.MonkeyPatch
@@ -251,6 +265,7 @@ def _crash(logger: logging.Logger) -> None:
 
 def _record_signal_shutdown() -> None:
     with _restored_signals():
+        signal.signal(signal.SIGTERM, lambda raised, frame: None)
         install_signal_handlers((signal.SIGTERM,))
         handler = signal.getsignal(signal.SIGTERM)
         assert callable(handler)

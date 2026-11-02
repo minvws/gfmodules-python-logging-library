@@ -80,6 +80,9 @@ def install_signal_handlers(signals: tuple[signal.Signals, ...] = (signal.SIGTER
                 record_shutdown_reason(f"signal:{signal.Signals(signum).name}")
                 if callable(prev):
                     prev(raised, frame)
+                elif prev is not signal.SIG_IGN:
+                    signal.signal(signum, signal.SIG_DFL)
+                    signal.raise_signal(signum)
 
             return handler
 

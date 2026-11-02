@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `install_signal_handlers()` no longer swallows a signal that had no handler
+  before it. The signal now gets its default action, so SIGTERM stops the
+  process again, and a signal that was ignored stays ignored.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)
