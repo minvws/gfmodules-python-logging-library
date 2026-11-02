@@ -74,10 +74,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(Exception, unhandled)
 
     # Added last so it runs outermost, wrapping every route and handler above.
-    app.add_middleware(
-        RequestContextMiddleware,
-        correlation_id_expected=settings.logging.correlation_id_expected,
-        # capture_body_methods stays unset: no reason to log a create call's contents.
-        trust_forwarded_for=settings.logging.trust_forwarded_for,
-    )
+    # capture_body_methods stays unset: no reason to log a create call's contents.
+    app.add_middleware(RequestContextMiddleware)
     return app

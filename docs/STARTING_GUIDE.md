@@ -262,13 +262,15 @@ from gfmodules.logging.middleware import RequestContextMiddleware
 
 app.add_middleware(
     RequestContextMiddleware,
-    correlation_id_expected=config.logging.correlation_id_expected,
     capture_body_methods=(),                          # ("POST",) to log request bodies
     max_body_bytes=4096,                              # bodies past this are truncated
     reuse_request_state_id=False,                     # True to honour an upstream request id
-    trust_forwarded_for=config.logging.trust_forwarded_for,
 )
 ```
+
+`access_logs`, `correlation_id_expected` and `trust_forwarded_for` are not
+middleware arguments: the middleware takes them from the `ConfigLogging` passed
+to `configure()`, so the configuration is the one place to set them.
 
 Every event logged while a request is being handled picks up the request id,
 client ip, user agent, endpoint, method and correlation metadata automatically,
@@ -282,8 +284,8 @@ binding never happens and no event, access or otherwise, picks up the request
 id, client ip or endpoint. Set `access_logs=False` to opt an application out
 even with the middleware added.
 
-**`configure()` has to run before this.** The middleware reads the setting once,
-when it is built, and holds it for the life of the application. Added before
+**`configure()` has to run before this.** The middleware reads these settings
+once, when it is built, and holds them for the life of the application. Added before
 `configure()`, it has nothing to read and says so:
 
 ```text
