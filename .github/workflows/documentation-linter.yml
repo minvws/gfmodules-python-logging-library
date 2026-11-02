@@ -22,6 +22,6 @@ jobs:
       # Rules live in .markdownlint-cli2.jsonc.
       # https://github.com/DavidAnson/markdownlint
       - name: Lint markdown files
-        uses: DavidAnson/markdownlint-cli2-action@v24.2.0
+        uses: DavidAnson/markdownlint-cli2-action@v25.0.0
         with:
           globs: "**/*.md"
