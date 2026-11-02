@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The access record for a request whose handler raised now carries
+  `status_code` 500, the status Starlette answers it with, instead of `null`.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)
