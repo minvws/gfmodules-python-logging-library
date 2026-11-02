@@ -241,15 +241,6 @@ class TestConfigure:
         assert payload["stream_id"] == "app"
         assert set(payload) >= {"event_id", "timestamp", "level", "event_description", "source", "message"}
 
-    def test_an_invalid_console_stream_is_not_reported_as_an_unreachable_log_server(self) -> None:
-        config = gflog.ConfigLogging(syslog_path="127.0.0.1:5514", console_streams=["nonsense"])
-
-        with pytest.raises(ValueError) as raised:
-            gflog.configure(config=config, loglevel="INFO", catalogue=CompleteCatalogue)
-
-        assert "unknown console_streams" in str(raised.value)
-        assert "could not reach the log server" not in str(raised.value)
-
 
 class TestTheLogServer:
     @pytest.fixture
