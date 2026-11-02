@@ -124,14 +124,31 @@ class TestLifespanLogging:
 
         assert shutdown_reason() == "graceful"
 
-    async def test_emits_stopped_even_when_the_application_raises(
+    async def test_reports_a_crash_instead_of_a_stop_when_the_application_raises(
         self, logger: logging.Logger, records: RecordingHandler
     ) -> None:
         with pytest.raises(RuntimeError):
             async with lifespan_logging(logger, version="1.2.3"):
                 raise RuntimeError("startup failed")
 
-        assert _stopped_records(records)
+        assert _stopped_records(records) == []
+        crashed = _crashed_records(records)[0]
+        assert crashed.last_exception_type == "RuntimeError"  # type: ignore[attr-defined]
+        assert crashed.shutdown_reason == "crash"  # type: ignore[attr-defined]
+        assert crashed.exc_info is not None
+
+    async def test_the_excepthook_does_not_report_that_crash_again(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        with _restored_excepthook():
+            install_excepthook(logger)
+            try:
+                async with lifespan_logging(logger, version="1.2.3"):
+                    raise RuntimeError("startup failed")
+            except RuntimeError:
+                sys.excepthook(*sys.exc_info())
+
+        assert len(_crashed_records(records)) == 1
 
     async def test_stays_quiet_after_a_crash_because_the_excepthook_reported_it(
         self, logger: logging.Logger, records: RecordingHandler
@@ -139,10 +156,8 @@ class TestLifespanLogging:
         async with lifespan_logging(logger, version="1.2.3"):
             _crash(logger)
 
-        # A catalogue may give crashed and stopped the same event id, so they
-        # are told apart by level rather than by id.
         assert _stopped_records(records) == []
-        assert [r for r in records.with_event_id(CRASHED) if r.levelno == logging.CRITICAL]
+        assert _crashed_records(records)
 
     async def test_config_path_is_optional(self, logger: logging.Logger, records: RecordingHandler) -> None:
         async with lifespan_logging(logger, version="1.2.3"):
@@ -298,6 +313,10 @@ class TestSignalHandlers:
 def _stopped_records(records: RecordingHandler) -> list[logging.LogRecord]:
     """Stopped shares its event id with crashed; level is what separates them."""
     return [r for r in records.with_event_id(STOPPED) if r.levelno == logging.INFO]
+
+
+def _crashed_records(records: RecordingHandler) -> list[logging.LogRecord]:
+    return [r for r in records.with_event_id(CRASHED) if r.levelno == logging.CRITICAL]
 
 
 def _crash(logger: logging.Logger) -> None:

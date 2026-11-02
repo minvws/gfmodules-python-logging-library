@@ -320,8 +320,10 @@ async def lifespan(app: FastAPI):
 
 `lifespan_logging` is a composable context manager rather than something you
 pass to `FastAPI(lifespan=...)`, so it sits alongside whatever else the
-application does at startup. After a crash it emits no stopped event, because the
-excepthook has already reported it.
+application does at startup. An exception raised through it, at startup or at
+shutdown, is reported as `SYS_APP_CRASHED` instead of a stopped event: uvicorn
+catches those itself, so the excepthook never sees them. After a crash the
+excepthook reported, it emits no stopped event either.
 
 While the application runs, `lifespan_logging` records a SIGTERM or SIGINT as the
 shutdown reason and passes the signal on to the server, so its graceful shutdown

@@ -9,6 +9,8 @@
 - `lifespan_logging()` now records SIGTERM and SIGINT itself. Calling
   `install_signal_handlers()` at import, as the docs showed, reported
   `graceful` under uvicorn. The call is now optional.
+- `lifespan_logging()` now reports an exception raised through it, such as a
+  failed startup, as `SYS_APP_CRASHED` instead of a graceful stop.
 
 ## 0.7.0 - 2026-11-02
 
