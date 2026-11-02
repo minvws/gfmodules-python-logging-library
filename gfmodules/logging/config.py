@@ -1,6 +1,10 @@
 from collections import Counter
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+
+ConsoleStream = Literal["app", "siem", "debug"]
+SyslogStream = Literal["app", "siem", "public_inspect", "debug"]
 
 
 class ConfigLogging(BaseModel):
@@ -13,10 +17,9 @@ class ConfigLogging(BaseModel):
     access_logs: bool = Field(default=True)
     # Only enable this where a proxy rewrites X-Forwarded-For; anywhere else the caller might set it.
     trust_forwarded_for: bool = Field(default=False)
-    # Which streams reach stdout as readable text, from "app", "siem" and "debug".
-    # Empty leaves stdout silent.
-    console_streams: list[str] = Field(default=["app", "siem"])
-    syslog_streams: list[str] = Field(default=["app", "siem", "public_inspect"])
+    # Which streams reach stdout as readable text. Empty leaves stdout silent.
+    console_streams: list[ConsoleStream] = Field(default=["app", "siem"])
+    syslog_streams: list[SyslogStream] = Field(default=["app", "siem", "public_inspect"])
 
     @field_validator("console_streams", "syslog_streams")
     @classmethod
