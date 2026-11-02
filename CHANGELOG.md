@@ -21,6 +21,13 @@
   instead of the path the caller sent. A request that matches no route still carries
   the path it was sent to.
 
+### Added
+
+- `install_excepthook()` also installs `threading.excepthook`, so an exception
+  that ends a thread is logged as `SYS_UNHANDLED_EXCEPTION` with its
+  `exception_type` and traceback. Python printed it to stderr before, outside
+  every stream. The process keeps running, so it is not logged as a crash.
+
 ### Changed
 
 - `event_description` on the log server now has control characters escaped
