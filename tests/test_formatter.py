@@ -332,6 +332,16 @@ class TestTraceInclusion:
     def test_plain_output_omits_the_traceback_when_traces_are_disabled(self) -> None:
         assert format_case(PlainTextFormatter(include_traces=False), with_exc=True) == PLAIN_LINE
 
+    @pytest.mark.parametrize("formatter", [JsonFormatter(), PlainTextFormatter()], ids=["json", "plain"])
+    def test_uvicorns_colored_duplicate_of_the_message_is_left_out(self, formatter: logging.Formatter) -> None:
+        record = logging.LogRecord(
+            "uvicorn.error", logging.INFO, "server.py", 1, "Started server process [%d]", (7,), None
+        )
+        without_color_message = formatter.format(record)
+        record.color_message = "Started server process [\x1b[36m%d\x1b[0m]"
+
+        assert formatter.format(record) == without_color_message
+
     def test_non_serialisable_values_fall_back_to_their_string_form(self) -> None:
         record = make_record()
         record.thing = object()
