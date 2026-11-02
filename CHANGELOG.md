@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `event_description` on the log server now has control characters escaped
+  instead of stripped, so an injection attempt stays visible in the SIEM. A
+  newline arrives as `\n` rather than vanishing.
+
+### Fixed
+
+- The plain-text console output now escapes control characters in the message
+  and in field values, so a newline shows as `\n` rather than starting a new
+  line. The message used to have them stripped and field values kept them, so
+  a newline in a value, such as one in a captured request body, could forge
+  extra log lines on stdout.
+- Tracebacks in the plain-text console output are now indented by two spaces,
+  with control characters other than newlines escaped, so an exception message
+  can no longer start a line that passes for a log line.
+- Control characters now include the C1 range and the Unicode line and
+  paragraph separators, which `str.splitlines()` and some log viewers treat as
+  line breaks.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)
