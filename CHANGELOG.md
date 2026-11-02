@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `install_excepthook()` also installs `threading.excepthook`, so an exception
+  that ends a thread is logged as `SYS_UNHANDLED_EXCEPTION` with its
+  `exception_type` and traceback. Python printed it to stderr before, outside
+  every stream. The process keeps running, so it is not logged as a crash.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)

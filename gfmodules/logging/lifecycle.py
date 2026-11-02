@@ -1,6 +1,7 @@
 import logging
 import signal
 import sys
+import threading
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from types import FrameType, TracebackType
@@ -61,7 +62,21 @@ def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] |
             exc_info=(exc_type, exc_value, exc_tb),
         )
 
+    def thread_hook(args: threading.ExceptHookArgs) -> None:
+        if issubclass(args.exc_type, SystemExit):
+            return
+        events = resolve_catalogue(catalogue)
+        thread_name = args.thread.name if args.thread else "unknown"
+        events.event(
+            logger,
+            events.SYS_UNHANDLED_EXCEPTION,
+            f"unhandled exception in thread {thread_name}",
+            fields={"exception_type": args.exc_type.__name__},
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+
     sys.excepthook = hook
+    threading.excepthook = thread_hook
 
 
 def install_signal_handlers(signals: tuple[signal.Signals, ...] = (signal.SIGTERM, signal.SIGINT)) -> None:
