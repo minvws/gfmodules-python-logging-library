@@ -80,6 +80,8 @@
 - Access records now follow the catalogue's routing for `ACCESS_REQUEST`. The
   app stream let every record from the access logger through by name, so an
   `ACCESS_REQUEST` routed away from the app stream still reached it.
+- The access record for a request whose handler raised now carries
+  `status_code` 500, the status Starlette answers it with, instead of `null`.
 
 ## 0.7.0 - 2026-11-02
 
