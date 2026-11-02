@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from pydantic import ValidationError
 
@@ -30,6 +32,16 @@ def test_a_console_stream_named_twice_is_rejected() -> None:
 def test_a_syslog_stream_named_twice_is_rejected() -> None:
     with pytest.raises(ValidationError, match=r"duplicate syslog_streams \['siem'\]"):
         ConfigLogging(syslog_streams=["app", "siem", "siem"])
+
+
+@pytest.mark.parametrize("path", ["syslog", "syslog:", ":5514", "syslog:port", "syslog:0", "syslog:65536", "[::1]"])
+def test_a_syslog_path_that_is_not_host_and_port_is_rejected(path: str) -> None:
+    with pytest.raises(ValidationError, match=re.escape(f"syslog_path {path!r} is not host:port")):
+        ConfigLogging(syslog_path=path)
+
+
+def test_an_empty_syslog_path_still_means_console_only() -> None:
+    assert ConfigLogging(syslog_path="").syslog_path == ""
 
 
 def test_accepts_an_application_supplied_configuration() -> None:
