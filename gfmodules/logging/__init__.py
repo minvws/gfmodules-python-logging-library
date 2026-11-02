@@ -20,7 +20,7 @@ from gfmodules.logging.context import (
     collect_context,
     correlation_headers,
     register_context_fields,
-    update_context,
+    set_context,
 )
 from gfmodules.logging.events import (
     REQUIRED_EVENTS,
@@ -33,7 +33,6 @@ from gfmodules.logging.events import (
     emit,
     missing_events,
     reserved_field_names,
-    set_strict_fields,
     unset_event_ids,
     validate_catalogue,
 )
@@ -62,6 +61,7 @@ from gfmodules.logging.registry import (
     register_catalogue,
 )
 from gfmodules.logging.streams import LoggingStreams
+from gfmodules.logging.strict import set_strict_fields
 
 __all__ = [
     "CLIENT_TRACE_ID_HEADER",
@@ -106,10 +106,10 @@ __all__ = [
     "register_catalogue",
     "register_logger_root",
     "reserved_field_names",
+    "set_context",
     "set_strict_fields",
     "shutdown_reason",
     "unset_event_ids",
-    "update_context",
     "validate_catalogue",
 ]
 

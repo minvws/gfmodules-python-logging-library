@@ -16,12 +16,12 @@ from gfmodules.logging.events import (
     emit,
     missing_events,
     reserved_field_names,
-    set_strict_fields,
     unrouted_fields,
     unset_event_ids,
     validate_catalogue,
 )
 from gfmodules.logging.streams import LoggingStreams
+from gfmodules.logging.strict import set_strict_fields
 from tests.helpers import emitters
 from tests.helpers.catalogue import CompleteCatalogue, IncompleteCatalogue
 

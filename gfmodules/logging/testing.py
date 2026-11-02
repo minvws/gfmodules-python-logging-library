@@ -15,13 +15,14 @@ from typing import Any
 
 from gfmodules.logging.context import register_context_fields
 from gfmodules.logging.event_overview import overview_command, render_event_overview
-from gfmodules.logging.events import EventCatalogue, LogEvent, missing_events, set_strict_fields, unset_event_ids
+from gfmodules.logging.events import EventCatalogue, LogEvent, missing_events, unset_event_ids
 from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter
 from gfmodules.logging.lifecycle import record_shutdown_reason, reset_shutdown_reason, shutdown_reason
 from gfmodules.logging.loggers import DEFAULT_LOGGER_ROOT, active_logger_root, register_logger_root
 from gfmodules.logging.registry import clear_access_logs, clear_catalogue
 from gfmodules.logging.streams import LoggingStreams
+from gfmodules.logging.strict import set_strict_fields
 
 __all__ = [
     "CapturedRecord",

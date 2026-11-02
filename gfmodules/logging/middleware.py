@@ -4,7 +4,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
@@ -22,6 +22,7 @@ from gfmodules.logging.context import (
     REQUEST_ID_HEADER,
     UNSET,
     bind_context,
+    bind_request_values,
     extract_context,
 )
 from gfmodules.logging.events import EventCatalogue
@@ -47,9 +48,9 @@ def _internal_logger() -> logging.Logger:
     return logging.getLogger(internal_logger_name())
 
 
-@dataclass(frozen=True)
+@dataclass
 class RequestContext:
-    values: Mapping[str, str]
+    values: dict[str, str]
 
     @property
     def request_id(self) -> str:
@@ -216,7 +217,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         )
         setattr(request.state, _REQUEST_CONTEXT_STATE_KEY, context)
 
-        with bind_context(context.values):
+        with bind_request_values(context.values):
             if self.correlation_id_expected and context.correlation_id == UNSET:
                 catalogue.event(
                     _internal_logger(),
