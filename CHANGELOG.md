@@ -20,6 +20,11 @@
 - `endpoint` now carries the route template, such as `/patients/{patient_id}`,
   instead of the path the caller sent. A request that matches no route still carries
   the path it was sent to.
+- `update_context` is removed in favor of `set_context()`. Its block ended
+  before the access record, the unhandled exception record and the records an
+  exception handler writes for a refused or invalid request, so a value added
+  from a dependency never reached them. Call `set_context()` from the
+  dependency instead, without a block.
 
 ### Added
 
@@ -27,12 +32,24 @@
   that ends a thread is logged as `SYS_UNHANDLED_EXCEPTION` with its
   `exception_type` and traceback. Python printed it to stderr before, outside
   every stream. The process keeps running, so it is not logged as a crash.
+- `set_context()` adds values to the request's context for the rest of the
+  request, even when called inside a `bind_context` block, so they also reach
+  the access record, the unhandled exception record and the records of refused
+  or invalid requests. It refuses the fields the middleware sets, refuses
+  undeclared fields with `strict_fields` on, and does nothing where no context
+  is bound, such as in a WebSocket route.
 
 ### Changed
 
 - `event_description` on the log server now has control characters escaped
   instead of stripped, so an injection attempt stays visible in the SIEM. A
   newline arrives as `\n` rather than vanishing.
+- `RequestContext` is no longer frozen, and its `values` is a `dict` instead
+  of a `Mapping`, since `set_context()` adds to it while the request is
+  handled.
+- `set_strict_fields` moved from `gfmodules.logging.events` to
+  `gfmodules.logging.strict`, since `set_context()` reads it too.
+  `gfmodules.logging` still exports it.
 
 ### Fixed
 

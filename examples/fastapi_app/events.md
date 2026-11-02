@@ -25,6 +25,7 @@ Every event carries these on every stream, whenever the request context holds a 
 The request context also holds these, but an event carries them only on the streams whose fields name them.
 
 - `tenant_id`
+- `caller_id`
 
 ## Stream `app`
 
@@ -33,13 +34,13 @@ The request context also holds these, but an event carries them only on the stre
 | `SYS_APP_STARTED` | 100601 | INFO | `version`, `config_path` |
 | `SYS_APP_STOPPED` | 100602 | INFO | `shutdown_reason`, `last_exception_type` |
 | `SYS_APP_CRASHED` | 100602 | CRITICAL | `shutdown_reason`, `last_exception_type` |
-| `SYS_UNHANDLED_EXCEPTION` | 100604 | ERROR | `exception_type`, `endpoint`, `method` |
+| `SYS_UNHANDLED_EXCEPTION` | 100604 | ERROR | `exception_type`, `endpoint`, `method`, `caller_id` |
 | `SYS_MISSING_CORRELATION_ID` | 100606 | ERROR | `endpoint`, `method` |
 | `RESOURCE_CREATED` | 100700 | INFO | `resource_id`, `owner_id`, `created_by` |
 | `RESOURCE_DELETED` | 100701 | INFO | `resource_id`, `reason` |
 | `LOOKUP_REJECTED` | 100702 | WARNING | `resource_id`, `error_reason` |
 | `LOOKUP_MALFORMED` | 100702 | WARNING | `resource_id`, `error_reason` |
-| `ACCESS_REQUEST` | 100 | INFO | `endpoint`, `method`, `status_code`, `duration_ms`, `body`, `body_truncated` |
+| `ACCESS_REQUEST` | 100 | INFO | `endpoint`, `method`, `status_code`, `duration_ms`, `body`, `body_truncated`, `caller_id` |
 
 ## Stream `siem`
 

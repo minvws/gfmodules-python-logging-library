@@ -9,6 +9,7 @@ from gfmodules.logging.context import (
     ContextField,
     always_kept_field_names,
     bind_context,
+    bind_request_values,
     collect_context,
     correlation_headers,
     extract_context,
@@ -17,10 +18,12 @@ from gfmodules.logging.context import (
     registered_fields,
     sanitize_free_text,
     sanitize_header_value,
-    update_context,
+    set_context,
 )
+from gfmodules.logging.strict import set_strict_fields
 
 TENANT_ID = ContextField(name="tenant_id", header="X-Tenant-Id")
+USER_ID = ContextField(name="user_id", header=None)
 
 
 @pytest.fixture(autouse=True)
@@ -104,31 +107,63 @@ class TestCollectContext:
             assert collect_context() == {"request_id": "abc"}
 
 
-class TestUpdateContext:
-    def test_adds_to_what_is_already_bound(self) -> None:
+class TestSetContext:
+    def test_adds_to_the_binding_for_as_long_as_it_lasts(self) -> None:
         register_context_fields((TENANT_ID,))
 
-        with bind_context({"request_id": "abc"}), update_context({"tenant_id": "t-1"}):
+        with bind_context({"request_id": "abc"}):
+            set_context({"tenant_id": "t-1"})
             assert collect_context() == {"request_id": "abc", "tenant_id": "t-1"}
 
-    def test_an_undeclared_field_still_reaches_no_record(self) -> None:
-        """Like every other value: only declared fields are collected."""
-        with bind_context({"request_id": "abc"}), update_context({"undeclared": "x"}):
-            assert collect_context() == {"request_id": "abc"}
+        assert collect_context() == {}
 
-    def test_overrides_a_value_that_is_already_bound(self) -> None:
-        with bind_context({"request_id": "abc"}), update_context({"request_id": "xyz"}):
-            assert collect_context()["request_id"] == "xyz"
+    def test_leaves_the_mapping_that_was_bound_alone(self) -> None:
+        bound = {"request_id": "abc"}
 
-    def test_the_addition_is_gone_after_the_block(self) -> None:
+        with bind_context(bound):
+            set_context({"tenant_id": "t-1"})
+
+        assert bound == {"request_id": "abc"}
+
+    def test_adds_to_the_request_values(self) -> None:
+        request = {"request_id": "abc"}
+
+        with bind_request_values(request):
+            set_context({"user_id": "u-1"})
+
+        assert request == {"request_id": "abc", "user_id": "u-1"}
+
+    def test_outlasts_a_block_opened_inside_the_request(self) -> None:
+        register_context_fields((TENANT_ID, USER_ID))
+
+        with bind_request_values({"request_id": "abc"}):
+            with bind_context({"tenant_id": "t-1"}):
+                set_context({"user_id": "u-1"})
+                assert collect_context() == {"tenant_id": "t-1", "user_id": "u-1"}
+            assert collect_context() == {"request_id": "abc", "user_id": "u-1"}
+
+    @pytest.mark.parametrize("name", [field.name for field in STANDARD_FIELDS])
+    def test_refuses_the_fields_the_middleware_sets(self, name: str) -> None:
+        with bind_context({}), pytest.raises(ValueError, match=name):
+            set_context({name: "x"})
+
+    def test_refuses_an_undeclared_field_with_strict_fields_on(self) -> None:
+        set_strict_fields(True)
+
+        with bind_context({}), pytest.raises(ValueError, match="organisation_id"):
+            set_context({"organisation_id": "o-1"})
+
+    def test_ignores_an_undeclared_field_with_strict_fields_off(self) -> None:
         with bind_context({"request_id": "abc"}):
-            with update_context({"tenant_id": "t-1"}):
-                pass
+            set_context({"organisation_id": "o-1"})
             assert collect_context() == {"request_id": "abc"}
 
-    def test_works_with_nothing_bound_yet(self) -> None:
-        with update_context({"request_id": "abc"}):
-            assert collect_context() == {"request_id": "abc"}
+    def test_does_nothing_when_nothing_is_bound(self) -> None:
+        register_context_fields((TENANT_ID,))
+
+        set_context({"tenant_id": "t-1"})
+
+        assert collect_context() == {}
 
 
 class TestBindContext:

@@ -1,9 +1,10 @@
 """Middleware tests."""
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, WebSocket
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -20,6 +21,7 @@ from gfmodules.logging.context import (
     ContextField,
     collect_context,
     register_context_fields,
+    set_context,
 )
 from gfmodules.logging.middleware import (
     RequestContext,
@@ -179,6 +181,106 @@ class TestEndpoint:
         TestClient(app).delete("/resources/7")
 
         assert records.with_event_id("100702")
+
+
+def set_user() -> None:
+    set_context({"user_id": "u-1"})
+
+
+async def set_user_async() -> None:
+    set_context({"user_id": "u-1"})
+
+
+class Refused(Exception):
+    pass
+
+
+ExceptionHandler = Callable[[Request, Exception], Awaitable[Response]]
+
+
+class TestSetContext:
+    def _client(self, unhandled: ExceptionHandler | None = None, refused: ExceptionHandler | None = None) -> TestClient:
+        register_context_fields((ContextField(name="user_id", header=None, always_keep=True),))
+        app = build_app()
+
+        @app.get("/login")
+        async def login() -> Response:
+            set_user()
+            return JSONResponse({})
+
+        @app.get("/login-sync")
+        def login_sync() -> Response:
+            set_user()
+            return JSONResponse({})
+
+        @app.get("/login-dependency", dependencies=[Depends(set_user_async)])
+        async def login_dependency() -> Response:
+            return JSONResponse({})
+
+        @app.get("/login-sync-dependency", dependencies=[Depends(set_user)])
+        async def login_sync_dependency() -> Response:
+            return JSONResponse({})
+
+        @app.get("/login-then-refused")
+        async def login_then_refused() -> Response:
+            set_user()
+            raise Refused()
+
+        @app.get("/login-then-boom")
+        async def login_then_boom() -> Response:
+            set_user()
+            raise ValueError("boom")
+
+        @app.websocket("/login-socket", dependencies=[Depends(set_user_async)])
+        async def login_socket(websocket: WebSocket) -> None:
+            await websocket.accept()
+            await websocket.send_text("connected")
+            await websocket.close()
+
+        if unhandled is not None:
+            app.add_exception_handler(Exception, restore_request_context(unhandled))
+        if refused is not None:
+            app.add_exception_handler(Refused, refused)
+        app.add_middleware(RequestContextMiddleware)
+        return TestClient(app, raise_server_exceptions=False)
+
+    @pytest.mark.parametrize("path", ["/login", "/login-sync", "/login-dependency", "/login-sync-dependency"])
+    def test_a_value_set_while_handling_the_request_reaches_the_access_record(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler, path: str
+    ) -> None:
+        self._client().get(path)
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["user_id"] == "u-1"
+
+    def test_a_value_set_in_the_endpoint_reaches_the_unhandled_exception_handler(
+        self, catalogue: type[CompleteCatalogue]
+    ) -> None:
+        seen: dict[str, Any] = {}
+
+        async def handler(request: Request, exc: Exception) -> Response:
+            seen.update(collect_context())
+            return JSONResponse({}, status_code=500)
+
+        self._client(unhandled=handler).get("/login-then-boom")
+
+        assert seen["user_id"] == "u-1"
+
+    def test_a_value_set_in_the_endpoint_reaches_the_handler_of_a_refused_request(
+        self, catalogue: type[CompleteCatalogue]
+    ) -> None:
+        seen: dict[str, Any] = {}
+
+        async def handler(request: Request, exc: Exception) -> Response:
+            seen.update(collect_context())
+            return JSONResponse({}, status_code=403)
+
+        self._client(refused=handler).get("/login-then-refused")
+
+        assert seen["user_id"] == "u-1"
+
+    def test_a_websocket_route_without_request_context_connects(self, catalogue: type[CompleteCatalogue]) -> None:
+        with self._client().websocket_connect("/login-socket") as websocket:
+            assert websocket.receive_text() == "connected"
 
 
 class TestResponseHeaders:
