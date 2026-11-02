@@ -18,7 +18,14 @@ from starlette.testclient import TestClient
 
 import gfmodules.logging as gflog
 from gfmodules.logging.middleware import RequestContextMiddleware
+from gfmodules.logging.streams import LoggingStreams
 from tests.helpers.catalogue import CompleteCatalogue
+
+
+class SiemOnlyAccess(CompleteCatalogue):
+    ACCESS_REQUEST = CompleteCatalogue.ACCESS_REQUEST.replace(
+        streams=(LoggingStreams.SIEM,), fields={LoggingStreams.SIEM: ("status_code",)}
+    )
 
 
 @pytest.fixture
@@ -37,7 +44,11 @@ def delivered(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     return payloads
 
 
-def configure(loglevel: str = "INFO", logger_root: str = gflog.DEFAULT_LOGGER_ROOT) -> None:
+def configure(
+    loglevel: str = "INFO",
+    logger_root: str = gflog.DEFAULT_LOGGER_ROOT,
+    catalogue: type[gflog.EventCatalogue] = CompleteCatalogue,
+) -> None:
     gflog.configure(
         config=gflog.ConfigLogging(
             syslog_path="localhost:1514",
@@ -46,7 +57,7 @@ def configure(loglevel: str = "INFO", logger_root: str = gflog.DEFAULT_LOGGER_RO
             syslog_streams=["app", "siem", "public_inspect", "debug"],
         ),
         loglevel=loglevel,
-        catalogue=CompleteCatalogue,
+        catalogue=catalogue,
         logger_root=logger_root,
     )
 
@@ -128,6 +139,16 @@ class TestApplicationEvents:
             client.get("/resources", headers={gflog.CORRELATION_ID_HEADER: "corr-1"})
 
         assert "app" in streams_for(delivered, CompleteCatalogue.ACCESS_REQUEST.event_id)
+
+    def test_an_access_record_the_catalogue_routes_elsewhere_stays_off_the_app_stream(
+        self, delivered: list[dict[str, Any]]
+    ) -> None:
+        configure(catalogue=SiemOnlyAccess)
+
+        with TestClient(build_app()) as client:
+            client.get("/resources", headers={gflog.CORRELATION_ID_HEADER: "corr-1"})
+
+        assert streams_for(delivered, SiemOnlyAccess.ACCESS_REQUEST.event_id) == {"siem", "debug"}
 
 
 class TestARenamedRoot:
