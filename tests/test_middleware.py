@@ -14,6 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.testclient import TestClient
 
+from gfmodules.logging.config import ConfigLogging
 from gfmodules.logging.context import (
     CLIENT_TRACE_ID_HEADER,
     CORRELATION_ID_HEADER,
@@ -30,7 +31,7 @@ from gfmodules.logging.middleware import (
     bind_request_context,
     restore_request_context,
 )
-from gfmodules.logging.registry import register_access_logs
+from gfmodules.logging.registry import register_access_logs, register_config
 from tests.conftest import RecordingHandler
 from tests.helpers.catalogue import CompleteCatalogue
 
@@ -327,14 +328,16 @@ class TestClientAddress:
         assert body["ip"] != "203.0.113.7"
 
     def test_reads_the_forwarded_header_when_a_proxy_is_trusted(self, catalogue: type[CompleteCatalogue]) -> None:
-        trusting = build_client(trust_forwarded_for=True)
+        register_config(ConfigLogging(trust_forwarded_for=True))
+        trusting = build_client()
 
         body = trusting.get("/context", headers={"X-Forwarded-For": "203.0.113.7"}).json()
 
         assert body["ip"] == "203.0.113.7"
 
     def test_takes_the_leftmost_entry_of_a_forwarded_chain(self, catalogue: type[CompleteCatalogue]) -> None:
-        trusting = build_client(trust_forwarded_for=True)
+        register_config(ConfigLogging(trust_forwarded_for=True))
+        trusting = build_client()
 
         body = trusting.get("/context", headers={"X-Forwarded-For": "203.0.113.7, 10.0.0.1"}).json()
 
@@ -343,7 +346,8 @@ class TestClientAddress:
     def test_falls_back_to_the_connection_when_the_header_is_not_an_address(
         self, catalogue: type[CompleteCatalogue]
     ) -> None:
-        trusting = build_client(trust_forwarded_for=True)
+        register_config(ConfigLogging(trust_forwarded_for=True))
+        trusting = build_client()
 
         body = trusting.get("/context", headers={"X-Forwarded-For": "not-an-ip"}).json()
 
@@ -354,7 +358,8 @@ class TestCorrelationIdExpected:
     def test_logs_when_a_required_correlation_id_is_missing(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
     ) -> None:
-        client = build_client(correlation_id_expected=True)
+        register_config(ConfigLogging(correlation_id_expected=True))
+        client = build_client()
 
         client.get("/ok")
 
@@ -365,7 +370,8 @@ class TestCorrelationIdExpected:
     def test_stays_quiet_when_the_correlation_id_is_present(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
     ) -> None:
-        client = build_client(correlation_id_expected=True)
+        register_config(ConfigLogging(correlation_id_expected=True))
+        client = build_client()
 
         client.get("/ok", headers={CORRELATION_ID_HEADER: "corr-1"})
 
