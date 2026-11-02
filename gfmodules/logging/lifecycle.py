@@ -38,6 +38,20 @@ def reset_shutdown_reason() -> None:
     record_shutdown_reason(GRACEFUL)
 
 
+def _report_crash(logger: logging.Logger, events: type[EventCatalogue], exc: BaseException) -> None:
+    record_shutdown_reason(CRASH)
+    events.event(
+        logger,
+        events.SYS_APP_CRASHED,
+        "application crashed: uncaught exception",
+        fields={
+            "shutdown_reason": shutdown_reason(),
+            "last_exception_type": type(exc).__name__,
+        },
+        exc_info=exc,
+    )
+
+
 def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] | None = None) -> None:
     """Without this Python prints the traceback to stderr, where it leaks into
     the stdout logs instead of staying in the debug stream.
@@ -51,18 +65,8 @@ def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] |
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_tb)
             return
-        record_shutdown_reason(CRASH)
-        events = resolve_catalogue(catalogue)
-        events.event(
-            logger,
-            events.SYS_APP_CRASHED,
-            "application crashed: uncaught exception",
-            fields={
-                "shutdown_reason": shutdown_reason(),
-                "last_exception_type": exc_type.__name__,
-            },
-            exc_info=(exc_type, exc_value, exc_tb),
-        )
+        if shutdown_reason() != CRASH:
+            _report_crash(logger, resolve_catalogue(catalogue), exc_value)
 
     sys.excepthook = hook
 
@@ -125,7 +129,8 @@ async def lifespan_logging(
     Started event includes version, config_path, and custom started_fields.
     Stopped event includes shutdown_reason and custom stopped_fields.
     Field mappings are evaluated when their event fires, allowing stopped_fields
-    to be updated during the run. Crashes are handled by excepthook.
+    to be updated during the run. An exception raised through it is
+    reported as a crash instead of a stop.
     """
     events = resolve_catalogue(catalogue)
     events.event(
@@ -137,6 +142,9 @@ async def lifespan_logging(
     try:
         with _recording_signals():
             yield
+    except Exception as exc:
+        _report_crash(logger, events, exc)
+        raise
     finally:
         if shutdown_reason() != CRASH:
             events.event(
