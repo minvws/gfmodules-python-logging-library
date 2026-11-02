@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from gfmodules.logging.config import ConfigLogging
+from gfmodules.logging.config import ConfigLogging, syslog_address
 from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter, PlainTextFormatter
 from gfmodules.logging.loggers import active_logger_root
@@ -25,10 +25,9 @@ class LogConfigBuilder:
         self.logging_config = logging_config
 
     def _syslog_handler(self, path: str, formatter: str, filters: list[str] | None = None) -> dict[str, Any]:
-        host, port_str = path.rsplit(":", 1)
         cfg: dict[str, Any] = {
             "class": "logging.handlers.SysLogHandler",
-            "address": (host, int(port_str)),
+            "address": syslog_address(path),
             "level": self.loglevel,
             "formatter": formatter,
         }

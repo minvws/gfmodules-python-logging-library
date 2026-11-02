@@ -48,6 +48,11 @@
   to its own records as a colored copy of the message, so the console app
   stream and the debug stream printed ANSI escape codes and an unformatted
   `%d` after every uvicorn startup line.
+- `ConfigLogging` now rejects a `syslog_path` that is not `host:port` with a
+  port from 1 to 65535, naming the value it was given. A path without a port
+  failed at `configure()` with `not enough values to unpack`, and a port that
+  is not a number with an `int()` error. A bracketed IPv6 host such as
+  `[fd00::1]:5514` now works.
 
 ## 0.7.0 - 2026-11-02
 
