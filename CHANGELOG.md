@@ -21,9 +21,6 @@
 
 ### Changed
 
-- `RequestContext` is no longer frozen, and its `values` is a `dict` instead
-  of a `Mapping`, since `set_context()` adds to it while the request is
-  handled.
 - `set_strict_fields` moved from `gfmodules.logging.events` to
   `gfmodules.logging.strict`, since `set_context()` reads it too.
   `gfmodules.logging` still exports it.
