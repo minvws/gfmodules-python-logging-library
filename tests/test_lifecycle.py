@@ -150,6 +150,23 @@ class TestLifespanLogging:
 
         assert len(_crashed_records(records)) == 1
 
+    async def test_the_excepthook_still_reports_a_different_exception_after_that_crash(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        with _restored_excepthook():
+            install_excepthook(logger)
+            try:
+                async with lifespan_logging(logger, version="1.2.3"):
+                    raise RuntimeError("startup failed")
+            except RuntimeError:
+                try:
+                    raise OSError("cleanup failed")
+                except OSError:
+                    sys.excepthook(*sys.exc_info())
+
+        reported = [r.last_exception_type for r in _crashed_records(records)]  # type: ignore[attr-defined]
+        assert reported == ["RuntimeError", "OSError"]
+
     async def test_stays_quiet_after_a_crash_because_the_excepthook_reported_it(
         self, logger: logging.Logger, records: RecordingHandler
     ) -> None:
