@@ -1,8 +1,9 @@
 import logging
 import signal
 import sys
-from collections.abc import AsyncGenerator, Mapping
-from contextlib import asynccontextmanager
+import threading
+from collections.abc import AsyncGenerator, Generator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from types import FrameType, TracebackType
 from typing import Any
 
@@ -12,6 +13,8 @@ from gfmodules.logging.registry import resolve_catalogue
 
 GRACEFUL = "graceful"
 CRASH = "crash"
+
+_SHUTDOWN_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 
 
 def _logger() -> logging.Logger:
@@ -64,7 +67,7 @@ def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] |
     sys.excepthook = hook
 
 
-def install_signal_handlers(signals: tuple[signal.Signals, ...] = (signal.SIGTERM, signal.SIGINT)) -> None:
+def install_signal_handlers(signals: tuple[signal.Signals, ...] = _SHUTDOWN_SIGNALS) -> None:
     """Delegates to the handler already installed, typically uvicorn's, so
     graceful shutdown keeps working.
     """
@@ -93,6 +96,20 @@ def install_signal_handlers(signals: tuple[signal.Signals, ...] = (signal.SIGTER
             _logger().warning("could not install a handler for %s: %s", sig.name, exc)
 
 
+@contextmanager
+def _recording_signals() -> Generator[None]:
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    found = {sig: signal.getsignal(sig) for sig in _SHUTDOWN_SIGNALS}
+    install_signal_handlers(_SHUTDOWN_SIGNALS)
+    try:
+        yield
+    finally:
+        for sig, handler in found.items():
+            signal.signal(sig, handler)
+
+
 @asynccontextmanager
 async def lifespan_logging(
     logger: logging.Logger,
@@ -118,7 +135,8 @@ async def lifespan_logging(
         fields={**(started_fields or {}), "version": version, "config_path": config_path},
     )
     try:
-        yield
+        with _recording_signals():
+            yield
     finally:
         if shutdown_reason() != CRASH:
             events.event(

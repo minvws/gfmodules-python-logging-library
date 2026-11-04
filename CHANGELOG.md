@@ -7,6 +7,11 @@
 - `install_signal_handlers()` no longer swallows a signal that had no handler
   before it. The signal now gets its default action, so SIGTERM stops the
   process again, and a signal that was ignored stays ignored.
+- Under uvicorn the stopped event reported `graceful` after a SIGTERM or
+  SIGINT, because uvicorn replaces signal handlers installed before it starts
+  serving. `lifespan_logging()` now installs them itself while the application
+  runs, so the stopped event reports the signal. An application served by
+  uvicorn no longer needs to call `install_signal_handlers()`.
 
 ## 0.7.0 - 2026-11-02
 
