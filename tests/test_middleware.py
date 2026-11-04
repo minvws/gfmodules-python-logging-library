@@ -1,6 +1,6 @@
 """Middleware tests."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
 
 import pytest
@@ -226,6 +226,12 @@ class TestSetContext:
             set_user()
             raise Refused()
 
+        @app.get("/login-then-read")
+        async def login_then_read(request: Request) -> Response:
+            set_user()
+            values = request.state.request_context.values
+            return JSONResponse({"user_id": values["user_id"], "writable": isinstance(values, MutableMapping)})
+
         @app.get("/login-then-boom")
         async def login_then_boom() -> Response:
             set_user()
@@ -277,6 +283,11 @@ class TestSetContext:
         self._client(refused=handler).get("/login-then-refused")
 
         assert seen["user_id"] == "u-1"
+
+    def test_the_request_context_shows_a_value_set_in_the_endpoint_but_cannot_change_it(
+        self, catalogue: type[CompleteCatalogue]
+    ) -> None:
+        assert self._client().get("/login-then-read").json() == {"user_id": "u-1", "writable": False}
 
     def test_a_websocket_route_without_request_context_connects(self, catalogue: type[CompleteCatalogue]) -> None:
         with self._client().websocket_connect("/login-socket") as websocket:
@@ -642,6 +653,13 @@ class TestRestoreRequestContext:
 
 
 class TestRequestContext:
+    def test_its_values_cannot_be_changed_through_it(self) -> None:
+        scope = {"type": "http", "method": "GET", "path": "/ok", "headers": [], "client": ("10.0.0.7", 5000)}
+        context = RequestContext.from_request(Request(scope))
+
+        with pytest.raises(TypeError):
+            context.values["request_id"] = "replaced"  # type: ignore[index]
+
     def test_reports_unset_for_fields_it_does_not_carry(self) -> None:
         context = RequestContext(values={})
 
