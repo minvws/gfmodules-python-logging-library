@@ -1,7 +1,9 @@
+import asyncio
 import logging
 import signal
 import sys
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -40,6 +42,14 @@ def logger(records: RecordingHandler) -> logging.Logger:
     return log
 
 
+@pytest.fixture
+def server_signals() -> Iterator[list[int]]:
+    received: list[int] = []
+    with _restored_signals():
+        signal.signal(signal.SIGTERM, lambda raised, frame: received.append(raised))
+        yield received
+
+
 class TestLifespanLogging:
     async def test_emits_started_before_the_application_runs(
         self, logger: logging.Logger, records: RecordingHandler
@@ -66,6 +76,42 @@ class TestLifespanLogging:
             _record_signal_shutdown()
 
         assert _stopped_records(records)[0].shutdown_reason == "signal:SIGTERM"  # type: ignore[attr-defined]
+
+    async def test_records_a_signal_that_arrives_while_the_application_runs(
+        self, logger: logging.Logger, records: RecordingHandler, server_signals: list[int]
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3"):
+            signal.raise_signal(signal.SIGTERM)
+
+        assert _stopped_records(records)[0].shutdown_reason == "signal:SIGTERM"  # type: ignore[attr-defined]
+
+    async def test_passes_the_signal_on_to_the_servers_handler(
+        self, logger: logging.Logger, server_signals: list[int]
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3"):
+            signal.raise_signal(signal.SIGTERM)
+
+        assert server_signals == [signal.SIGTERM]
+
+    async def test_stops_recording_signals_once_the_application_has_stopped(
+        self, logger: logging.Logger, server_signals: list[int]
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3"):
+            pass
+
+        signal.raise_signal(signal.SIGTERM)
+
+        assert shutdown_reason() == "graceful"
+
+    def test_runs_off_the_main_thread_without_warnings(self, logger: logging.Logger, records: RecordingHandler) -> None:
+        async def application() -> None:
+            async with lifespan_logging(logger, version="1.2.3"):
+                pass
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(asyncio.run, application()).result()
+
+        assert not any("could not install a handler" in r.getMessage() for r in records.records)
 
     async def test_a_test_can_set_the_reason_without_reaching_into_the_module(
         self, logger: logging.Logger, records: RecordingHandler

@@ -36,7 +36,6 @@ def setup_logging(settings: Settings, *, strict_fields: bool = False) -> None:
         strict_fields=strict_fields,
     )
     gflog.install_excepthook(logger)
-    gflog.install_signal_handlers()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
