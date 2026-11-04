@@ -38,7 +38,12 @@ def reset_shutdown_reason() -> None:
     record_shutdown_reason(GRACEFUL)
 
 
+_reported_crash: BaseException | None = None
+
+
 def _report_crash(logger: logging.Logger, events: type[EventCatalogue], exc: BaseException) -> None:
+    global _reported_crash
+    _reported_crash = exc
     record_shutdown_reason(CRASH)
     events.event(
         logger,
@@ -65,7 +70,7 @@ def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] |
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_tb)
             return
-        if shutdown_reason() != CRASH:
+        if exc_value is not _reported_crash:
             _report_crash(logger, resolve_catalogue(catalogue), exc_value)
 
     sys.excepthook = hook
