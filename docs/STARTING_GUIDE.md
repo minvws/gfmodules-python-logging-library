@@ -319,6 +319,10 @@ async def lifespan(app: FastAPI):
         yield
 ```
 
+`install_excepthook` also reports an exception that ends a thread, as
+`SYS_UNHANDLED_EXCEPTION` with its `exception_type`. The process keeps running,
+so it is not a crash.
+
 `lifespan_logging` is a composable context manager rather than something you
 pass to `FastAPI(lifespan=...)`, so it sits alongside whatever else the
 application does at startup. After a crash it emits no stopped event, because the
