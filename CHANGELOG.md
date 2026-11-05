@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Changed (breaking)
+
+- `update_context` is removed in favor of `set_context()`. Its block ended
+  before the access record, the unhandled exception record and the records an
+  exception handler writes for a refused or invalid request, so a value added
+  from a dependency never reached them. Call `set_context()` from the
+  dependency instead, without a block.
+
+### Added
+
+- `set_context()` adds values to the request's context for the rest of the
+  request, even when called inside a `bind_context` block, so they also reach
+  the access record, the unhandled exception record and the records of refused
+  or invalid requests. It refuses the fields the middleware sets, refuses
+  undeclared fields with `strict_fields` on, and does nothing where no context
+  is bound, such as in a WebSocket route.
+
+### Changed
+
+- `set_strict_fields` moved from `gfmodules.logging.events` to
+  `gfmodules.logging.strict`, since `set_context()` reads it too.
+  `gfmodules.logging` still exports it.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)
