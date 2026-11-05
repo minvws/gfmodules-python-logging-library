@@ -47,6 +47,8 @@
 - `set_strict_fields` moved from `gfmodules.logging.events` to
   `gfmodules.logging.strict`, since `set_context()` reads it too.
   `gfmodules.logging` still exports it.
+- `configure()` now validates the catalogue once at boot instead of twice. An
+  invalid catalogue still fails before any other setting is registered.
 
 ### Fixed
 

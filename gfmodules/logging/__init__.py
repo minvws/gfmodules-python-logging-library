@@ -130,12 +130,11 @@ def configure(
     if level not in logging.getLevelNamesMapping():
         raise ValueError(f"invalid loglevel {level}")
 
-    validate_catalogue(catalogue, access_logs=config.access_logs)
+    register_catalogue(catalogue, access_logs=config.access_logs)
     set_strict_fields(strict_fields)
     register_context_fields(catalogue.context_fields)
     register_access_logs(config.access_logs)
     register_config(config)
-    register_catalogue(catalogue, access_logs=config.access_logs)
     register_logger_root(logger_root)
     document = LogConfigBuilder(logging_config=config, loglevel=level).build()
     try:

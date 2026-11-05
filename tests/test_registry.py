@@ -2,8 +2,9 @@ import pytest
 
 from gfmodules.logging import configure
 from gfmodules.logging.config import ConfigLogging
-from gfmodules.logging.registry import active_access_logs, register_access_logs, registered_config
-from tests.helpers.catalogue import CompleteCatalogue
+from gfmodules.logging.events import EventCatalogue, validate_catalogue
+from gfmodules.logging.registry import active_access_logs, active_catalogue, register_access_logs, registered_config
+from tests.helpers.catalogue import CompleteCatalogue, IncompleteCatalogue
 
 
 class TestAccessLogsSetting:
@@ -32,3 +33,28 @@ class TestConfig:
         configure(config=config, loglevel="INFO", catalogue=CompleteCatalogue)
 
         assert registered_config() is config
+
+
+class TestConfigure:
+    def test_validates_the_catalogue_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[type[EventCatalogue]] = []
+
+        def counting(catalogue: type[EventCatalogue], *, access_logs: bool = True) -> None:
+            calls.append(catalogue)
+            validate_catalogue(catalogue, access_logs=access_logs)
+
+        monkeypatch.setattr("gfmodules.logging.validate_catalogue", counting)
+        monkeypatch.setattr("gfmodules.logging.registry.validate_catalogue", counting)
+
+        configure(config=ConfigLogging(console_streams=[]), loglevel="INFO", catalogue=CompleteCatalogue)
+
+        assert calls == [CompleteCatalogue]
+
+    def test_an_invalid_catalogue_registers_nothing(self) -> None:
+        with pytest.raises(ValueError, match="does not define required events"):
+            configure(config=ConfigLogging(), loglevel="INFO", catalogue=IncompleteCatalogue)
+
+        with pytest.raises(RuntimeError, match="no event catalogue registered"):
+            active_catalogue()
+        with pytest.raises(RuntimeError, match="access logging setting unknown"):
+            active_access_logs()
