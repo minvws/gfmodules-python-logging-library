@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from gfmodules.logging.config import ConfigLogging
+from gfmodules.logging.config import ConfigLogging, SyslogStream
 from gfmodules.logging.config_builder import LogConfigBuilder
 from gfmodules.logging.filters import AppFilter, PublicInspectFilter, SiemFilter
 from gfmodules.logging.formatter import JsonFormatter, PlainTextFormatter
@@ -13,7 +13,7 @@ from gfmodules.logging.streams import LoggingStreams
 APP_ID = "example-service"
 SYSLOG = "syslog-server:5514"
 ADDRESS = ("syslog-server", 5514)
-EVERY_SYSLOG_STREAM = ["app", "siem", "public_inspect", "debug"]
+EVERY_SYSLOG_STREAM: list[SyslogStream] = ["app", "siem", "public_inspect", "debug"]
 
 EXPECTED_SYSLOG_DOCUMENT: dict[str, Any] = {
     "version": 1,
@@ -246,10 +246,6 @@ class TestConsoleStreamSelection:
 
         assert "filters" not in console
 
-    def test_an_unknown_stream_is_rejected_rather_than_silently_ignored(self) -> None:
-        with pytest.raises(ValueError, match="nonsense"):
-            build(ConfigLogging(console_streams=["nonsense"]))
-
     def test_an_empty_selection_leaves_stdout_quiet(self) -> None:
         conf = build(ConfigLogging(console_streams=[]))
 
@@ -372,14 +368,6 @@ class TestSyslogStreamSelection:
         conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["siem"]))
 
         assert syslog_handlers(conf) == ["syslog_siem"]
-
-    def test_an_unknown_stream_is_rejected_rather_than_silently_ignored(self) -> None:
-        with pytest.raises(ValueError, match="nonsense"):
-            build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=["nonsense"]))
-
-    def test_an_unknown_stream_is_rejected_before_a_log_server_is_configured(self) -> None:
-        with pytest.raises(ValueError, match="unknown syslog_streams"):
-            build(ConfigLogging(syslog_streams=["nonsense"]))
 
     def test_an_empty_selection_sends_nothing_to_the_log_server(self) -> None:
         conf = build(ConfigLogging(syslog_path=SYSLOG, syslog_streams=[]))

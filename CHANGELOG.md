@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed (breaking)
+
+- `console_streams` and `syslog_streams` on `ConfigLogging` are typed as lists
+  of the stream names each accepts, so an unknown name fails where the
+  configuration loads rather than at `configure()`. A type checker now rejects
+  a plain `list[str]` passed to them.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)
