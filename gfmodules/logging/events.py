@@ -43,14 +43,17 @@ _STDLIB_RECORD_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-#: Field names a record cannot carry: the standard library refuses to overwrite
-#: its own ``LogRecord`` attributes, and the last three are this library's.
+#: Field names an event cannot use: the standard library refuses to overwrite
+#: its own ``LogRecord`` attributes, ``event_id``, ``stream`` and
+#: ``field_streams`` are this library's, and uvicorn fills ``color_message``
+#: with a colored copy of its message.
 RESERVED_FIELDS: frozenset[str] = _STDLIB_RECORD_FIELDS | {
     "message",
     "asctime",
     "event_id",
     "stream",
     "field_streams",
+    "color_message",
 }
 
 
