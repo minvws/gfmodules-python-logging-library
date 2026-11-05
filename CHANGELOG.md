@@ -6,6 +6,13 @@
 
 - `color_message` is now in `RESERVED_FIELDS`, so a catalogue that declares it
   as a field fails validation, since the formatters leave it out.
+- `RequestContextMiddleware` no longer takes `correlation_id_expected` and
+  `trust_forwarded_for` arguments. It reads both from the `ConfigLogging`
+  passed to `configure()`, as it already did `access_logs`. Before, both
+  settings did nothing unless the application also passed them to the
+  middleware by hand, and an argument could contradict the configuration.
+  Remove them from `add_middleware()`; passing either now raises a `TypeError`
+  when the middleware is built.
 
 ### Changed
 

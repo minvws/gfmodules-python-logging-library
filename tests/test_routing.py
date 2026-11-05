@@ -43,6 +43,7 @@ def configure(loglevel: str = "INFO", logger_root: str = gflog.DEFAULT_LOGGER_RO
             syslog_path="localhost:1514",
             application_id="routing-test",
             access_logs=True,
+            correlation_id_expected=True,
             syslog_streams=["app", "siem", "public_inspect", "debug"],
         ),
         loglevel=loglevel,
@@ -58,7 +59,7 @@ def build_app() -> FastAPI:
     async def list_resources() -> Response:
         return JSONResponse({"resources": []})
 
-    app.add_middleware(RequestContextMiddleware, correlation_id_expected=True)
+    app.add_middleware(RequestContextMiddleware)
     return app
 
 
