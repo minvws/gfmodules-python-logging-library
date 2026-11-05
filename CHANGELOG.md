@@ -13,6 +13,10 @@
   middleware by hand, and an argument could contradict the configuration.
   Remove them from `add_middleware()`; passing either now raises a `TypeError`
   when the middleware is built.
+- `console_streams` and `syslog_streams` on `ConfigLogging` are typed as lists
+  of the stream names each accepts, so an unknown name fails where the
+  configuration loads rather than at `configure()`. A type checker now rejects
+  a plain `list[str]` passed to them.
 
 ### Changed
 

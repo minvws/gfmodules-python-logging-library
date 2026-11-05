@@ -32,6 +32,17 @@ def test_a_syslog_stream_named_twice_is_rejected() -> None:
         ConfigLogging(syslog_streams=["app", "siem", "siem"])
 
 
+@pytest.mark.parametrize("setting", ["console_streams", "syslog_streams"])
+def test_an_unknown_stream_is_rejected_when_the_configuration_loads(setting: str) -> None:
+    with pytest.raises(ValidationError, match=f"{setting}.1\n  Input should be"):
+        ConfigLogging.model_validate({setting: ["app", "nonsense"]})
+
+
+def test_public_inspect_cannot_reach_the_console() -> None:
+    with pytest.raises(ValidationError, match="console_streams.0"):
+        ConfigLogging.model_validate({"console_streams": ["public_inspect"]})
+
+
 def test_accepts_an_application_supplied_configuration() -> None:
     config = ConfigLogging(
         syslog_path="syslog:5514",
