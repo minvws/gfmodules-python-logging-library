@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable, Generator, Iterable, Mapping, S
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
+from http import HTTPStatus
 from types import MappingProxyType
 from typing import Any, TypeVar, cast
 
@@ -265,7 +266,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         start: float,
     ) -> None:
         fields: dict[str, Any] = {
-            "status_code": response.status_code if response is not None else None,
+            "status_code": response.status_code if response is not None else HTTPStatus.INTERNAL_SERVER_ERROR.value,
             "duration_ms": round((time.perf_counter() - start) * 1000),
         }
         if body is not None:
