@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Access records now follow the catalogue's routing for `ACCESS_REQUEST`. The
+  app stream let every record from the access logger through by name, so an
+  `ACCESS_REQUEST` routed away from the app stream still reached it.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)
