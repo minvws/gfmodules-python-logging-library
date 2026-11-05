@@ -60,6 +60,7 @@ from gfmodules.logging.registry import (
     active_catalogue,
     register_access_logs,
     register_catalogue,
+    register_config,
 )
 from gfmodules.logging.streams import LoggingStreams
 
@@ -133,6 +134,7 @@ def configure(
     set_strict_fields(strict_fields)
     register_context_fields(catalogue.context_fields)
     register_access_logs(config.access_logs)
+    register_config(config)
     register_catalogue(catalogue, access_logs=config.access_logs)
     register_logger_root(logger_root)
     document = LogConfigBuilder(logging_config=config, loglevel=level).build()

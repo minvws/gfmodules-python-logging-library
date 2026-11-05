@@ -2,10 +2,12 @@
 through every library component that logs.
 """
 
+from gfmodules.logging.config import ConfigLogging
 from gfmodules.logging.events import EventCatalogue, validate_catalogue
 
 _catalogue: type[EventCatalogue] | None = None
 _access_logs: bool | None = None
+_config: ConfigLogging | None = None
 
 
 def register_catalogue(catalogue: type[EventCatalogue], *, access_logs: bool = True) -> None:
@@ -45,3 +47,17 @@ def active_access_logs() -> bool:
             "access logging setting unknown: call gfmodules.logging.configure() before adding the middleware"
         )
     return _access_logs
+
+
+def register_config(config: ConfigLogging) -> None:
+    global _config
+    _config = config
+
+
+def clear_config() -> None:
+    global _config
+    _config = None
+
+
+def registered_config() -> ConfigLogging:
+    return _config if _config is not None else ConfigLogging()
