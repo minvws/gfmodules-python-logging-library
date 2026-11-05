@@ -1,17 +1,14 @@
-"""Middleware tests.
-
-These build FastAPI applications rather than bare Starlette ones because
-per-route access event ids depend on ``scope["route"]``, which FastAPI's
-``APIRoute`` sets and a plain Starlette ``Route`` does not.
-"""
+"""Middleware tests."""
 
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from gfmodules.logging.config import ConfigLogging
@@ -132,6 +129,56 @@ class TestContextBinding:
         second = client.get("/context").json()["request_id"]
 
         assert first != second
+
+
+class TestEndpoint:
+    def test_carries_the_route_template_rather_than_the_path_sent(
+        self, client: TestClient, records: RecordingHandler
+    ) -> None:
+        client.delete("/resources/123456782")
+
+        assert records.messages_with_event_id("100702")[0]["endpoint"] == "/resources/{id}"
+
+    def test_carries_the_route_template_when_the_method_is_not_allowed(
+        self, client: TestClient, records: RecordingHandler
+    ) -> None:
+        client.get("/resources/123456782")
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["endpoint"] == "/resources/{id}"
+
+    def test_keeps_the_path_sent_when_no_route_matches(self, client: TestClient, records: RecordingHandler) -> None:
+        client.get("/nowhere/7")
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["endpoint"] == "/nowhere/7"
+
+    def test_prefixes_the_routes_of_a_mounted_application(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
+    ) -> None:
+        async def item(request: Request) -> Response:
+            return JSONResponse({})
+
+        register_access_logs(True)
+        app = build_app()
+        app.mount("/sub", Starlette(routes=[Route("/items/{item_id}", item)]))
+        app.add_middleware(RequestContextMiddleware)
+
+        TestClient(app).get("/sub/items/7")
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["endpoint"] == "/sub/items/{item_id}"
+
+    def test_maps_access_event_ids_under_a_plain_starlette_router(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
+    ) -> None:
+        async def delete(request: Request) -> Response:
+            return JSONResponse({})
+
+        register_access_logs(True)
+        app = Starlette(routes=[Route("/resources/{id}", delete, methods=["DELETE"])])
+        app.add_middleware(RequestContextMiddleware)
+
+        TestClient(app).delete("/resources/7")
+
+        assert records.with_event_id("100702")
 
 
 class TestResponseHeaders:

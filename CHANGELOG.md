@@ -17,6 +17,9 @@
   of the stream names each accepts, so an unknown name fails where the
   configuration loads rather than at `configure()`. A type checker now rejects
   a plain `list[str]` passed to them.
+- `endpoint` now carries the route template, such as `/patients/{patient_id}`,
+  instead of the path the caller sent. A request that matches no route still carries
+  the path it was sent to.
 
 ### Changed
 
