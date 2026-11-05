@@ -1,7 +1,10 @@
+import asyncio
 import logging
 import signal
 import sys
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -20,6 +23,7 @@ from tests.helpers.catalogue import CompleteCatalogue
 STARTED = CompleteCatalogue.SYS_APP_STARTED.event_id
 STOPPED = CompleteCatalogue.SYS_APP_STOPPED.event_id
 CRASHED = CompleteCatalogue.SYS_APP_CRASHED.event_id
+UNHANDLED = CompleteCatalogue.SYS_UNHANDLED_EXCEPTION.event_id
 
 pytestmark = pytest.mark.usefixtures("catalogue")
 
@@ -38,6 +42,14 @@ def logger(records: RecordingHandler) -> logging.Logger:
     log.propagate = True
     log.setLevel(logging.DEBUG)
     return log
+
+
+@pytest.fixture
+def server_signals() -> Iterator[list[int]]:
+    received: list[int] = []
+    with _restored_signals():
+        signal.signal(signal.SIGTERM, lambda raised, frame: received.append(raised))
+        yield received
 
 
 class TestLifespanLogging:
@@ -67,6 +79,42 @@ class TestLifespanLogging:
 
         assert _stopped_records(records)[0].shutdown_reason == "signal:SIGTERM"  # type: ignore[attr-defined]
 
+    async def test_records_a_signal_that_arrives_while_the_application_runs(
+        self, logger: logging.Logger, records: RecordingHandler, server_signals: list[int]
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3"):
+            signal.raise_signal(signal.SIGTERM)
+
+        assert _stopped_records(records)[0].shutdown_reason == "signal:SIGTERM"  # type: ignore[attr-defined]
+
+    async def test_passes_the_signal_on_to_the_servers_handler(
+        self, logger: logging.Logger, server_signals: list[int]
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3"):
+            signal.raise_signal(signal.SIGTERM)
+
+        assert server_signals == [signal.SIGTERM]
+
+    async def test_stops_recording_signals_once_the_application_has_stopped(
+        self, logger: logging.Logger, server_signals: list[int]
+    ) -> None:
+        async with lifespan_logging(logger, version="1.2.3"):
+            pass
+
+        signal.raise_signal(signal.SIGTERM)
+
+        assert shutdown_reason() == "graceful"
+
+    def test_runs_off_the_main_thread_without_warnings(self, logger: logging.Logger, records: RecordingHandler) -> None:
+        async def application() -> None:
+            async with lifespan_logging(logger, version="1.2.3"):
+                pass
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(asyncio.run, application()).result()
+
+        assert not any("could not install a handler" in r.getMessage() for r in records.records)
+
     async def test_a_test_can_set_the_reason_without_reaching_into_the_module(
         self, logger: logging.Logger, records: RecordingHandler
     ) -> None:
@@ -78,14 +126,48 @@ class TestLifespanLogging:
 
         assert shutdown_reason() == "graceful"
 
-    async def test_emits_stopped_even_when_the_application_raises(
+    async def test_reports_a_crash_instead_of_a_stop_when_the_application_raises(
         self, logger: logging.Logger, records: RecordingHandler
     ) -> None:
         with pytest.raises(RuntimeError):
             async with lifespan_logging(logger, version="1.2.3"):
                 raise RuntimeError("startup failed")
 
-        assert _stopped_records(records)
+        assert _stopped_records(records) == []
+        crashed = _crashed_records(records)[0]
+        assert crashed.last_exception_type == "RuntimeError"  # type: ignore[attr-defined]
+        assert crashed.shutdown_reason == "crash"  # type: ignore[attr-defined]
+        assert crashed.exc_info is not None
+
+    async def test_the_excepthook_does_not_report_that_crash_again(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        with _restored_excepthook():
+            install_excepthook(logger)
+            try:
+                async with lifespan_logging(logger, version="1.2.3"):
+                    raise RuntimeError("startup failed")
+            except RuntimeError:
+                sys.excepthook(*sys.exc_info())
+
+        assert len(_crashed_records(records)) == 1
+
+    async def test_the_excepthook_still_reports_a_different_exception_after_that_crash(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        with _restored_excepthook():
+            install_excepthook(logger)
+            try:
+                async with lifespan_logging(logger, version="1.2.3"):
+                    raise RuntimeError("startup failed")
+            except RuntimeError:
+                try:
+                    raise OSError("cleanup failed")
+                except OSError:
+                    sys.excepthook(*sys.exc_info())
+
+        reported = [r.last_exception_type for r in _crashed_records(records)]  # type: ignore[attr-defined]
+        assert reported == ["RuntimeError", "OSError"]
 
     async def test_stays_quiet_after_a_crash_because_the_excepthook_reported_it(
         self, logger: logging.Logger, records: RecordingHandler
@@ -93,10 +175,8 @@ class TestLifespanLogging:
         async with lifespan_logging(logger, version="1.2.3"):
             _crash(logger)
 
-        # A catalogue may give crashed and stopped the same event id, so they
-        # are told apart by level rather than by id.
         assert _stopped_records(records) == []
-        assert [r for r in records.with_event_id(CRASHED) if r.levelno == logging.CRITICAL]
+        assert _crashed_records(records)
 
     async def test_config_path_is_optional(self, logger: logging.Logger, records: RecordingHandler) -> None:
         async with lifespan_logging(logger, version="1.2.3"):
@@ -185,14 +265,31 @@ class TestExcepthook:
         assert records.with_event_id(CRASHED) == []
         assert shutdown_reason() == "graceful"
 
+    def test_logs_an_exception_that_ends_a_thread_as_unhandled(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        _run_thread_that_raises(logger, ValueError("boom"))
+
+        record = records.with_event_id(UNHANDLED)[0]
+        assert record.exception_type == "ValueError"  # type: ignore[attr-defined]
+        assert record.getMessage() == "unhandled exception in thread worker"
+        assert record.exc_info is not None
+
+    def test_a_thread_ending_is_not_a_crash(self, logger: logging.Logger, records: RecordingHandler) -> None:
+        _run_thread_that_raises(logger, ValueError("boom"))
+
+        assert records.with_event_id(CRASHED) == []
+        assert shutdown_reason() == "graceful"
+
+    def test_leaves_a_thread_that_exits_alone(self, logger: logging.Logger, records: RecordingHandler) -> None:
+        _run_thread_that_raises(logger, SystemExit())
+
+        assert records.with_event_id(UNHANDLED) == []
+
 
 class TestSignalHandlers:
     def test_records_the_signal_that_asked_us_to_stop(self) -> None:
-        with _restored_signals():
-            install_signal_handlers((signal.SIGTERM,))
-            handler = signal.getsignal(signal.SIGTERM)
-            assert callable(handler)
-            handler(signal.SIGTERM, None)
+        _record_signal_shutdown()
 
         assert shutdown_reason() == "signal:SIGTERM"
 
@@ -208,7 +305,10 @@ class TestSignalHandlers:
 
         assert called == [signal.SIGTERM]
 
-    def test_survives_a_signal_with_no_installed_handler(self) -> None:
+    def test_gives_a_signal_with_no_installed_handler_its_default_action(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        raised: list[tuple[int, Any]] = []
+        monkeypatch.setattr(signal, "raise_signal", lambda sig: raised.append((sig, signal.getsignal(sig))))
+
         with _restored_signals():
             signal.signal(signal.SIGTERM, signal.SIG_DFL)
             install_signal_handlers((signal.SIGTERM,))
@@ -217,6 +317,21 @@ class TestSignalHandlers:
             handler(signal.SIGTERM, None)
 
         assert shutdown_reason() == "signal:SIGTERM"
+        assert raised == [(signal.SIGTERM, signal.SIG_DFL)]
+
+    def test_keeps_an_ignored_signal_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        raised: list[int] = []
+        monkeypatch.setattr(signal, "raise_signal", raised.append)
+
+        with _restored_signals():
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            install_signal_handlers((signal.SIGTERM,))
+            handler = signal.getsignal(signal.SIGTERM)
+            assert callable(handler)
+            handler(signal.SIGTERM, None)
+
+        assert shutdown_reason() == "signal:SIGTERM"
+        assert raised == []
 
     def test_reports_a_handler_it_could_not_install(
         self, records: RecordingHandler, monkeypatch: pytest.MonkeyPatch
@@ -240,6 +355,10 @@ def _stopped_records(records: RecordingHandler) -> list[logging.LogRecord]:
     return [r for r in records.with_event_id(STOPPED) if r.levelno == logging.INFO]
 
 
+def _crashed_records(records: RecordingHandler) -> list[logging.LogRecord]:
+    return [r for r in records.with_event_id(CRASHED) if r.levelno == logging.CRITICAL]
+
+
 def _crash(logger: logging.Logger) -> None:
     with _restored_excepthook():
         install_excepthook(logger)
@@ -249,8 +368,20 @@ def _crash(logger: logging.Logger) -> None:
             sys.excepthook(*sys.exc_info())
 
 
+def _run_thread_that_raises(logger: logging.Logger, exc: BaseException) -> None:
+    def work() -> None:
+        raise exc
+
+    with _restored_excepthook():
+        install_excepthook(logger)
+        thread = threading.Thread(target=work, name="worker")
+        thread.start()
+        thread.join()
+
+
 def _record_signal_shutdown() -> None:
     with _restored_signals():
+        signal.signal(signal.SIGTERM, lambda raised, frame: None)
         install_signal_handlers((signal.SIGTERM,))
         handler = signal.getsignal(signal.SIGTERM)
         assert callable(handler)
@@ -259,10 +390,10 @@ def _record_signal_shutdown() -> None:
 
 class _restored_excepthook:
     def __enter__(self) -> None:
-        self.previous = sys.excepthook
+        self.previous = (sys.excepthook, threading.excepthook)
 
     def __exit__(self, *exc: object) -> None:
-        sys.excepthook = self.previous
+        sys.excepthook, threading.excepthook = self.previous
 
 
 class _restored_signals:

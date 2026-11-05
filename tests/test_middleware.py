@@ -1,19 +1,18 @@
-"""Middleware tests.
+"""Middleware tests."""
 
-These build FastAPI applications rather than bare Starlette ones because
-per-route access event ids depend on ``scope["route"]``, which FastAPI's
-``APIRoute`` sets and a plain Starlette ``Route`` does not.
-"""
-
+from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, WebSocket
+from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.routing import Route
 from starlette.testclient import TestClient
 
+from gfmodules.logging.config import ConfigLogging
 from gfmodules.logging.context import (
     CLIENT_TRACE_ID_HEADER,
     CORRELATION_ID_HEADER,
@@ -22,6 +21,7 @@ from gfmodules.logging.context import (
     ContextField,
     collect_context,
     register_context_fields,
+    set_context,
 )
 from gfmodules.logging.middleware import (
     RequestContext,
@@ -30,7 +30,7 @@ from gfmodules.logging.middleware import (
     bind_request_context,
     restore_request_context,
 )
-from gfmodules.logging.registry import register_access_logs
+from gfmodules.logging.registry import register_access_logs, register_config
 from tests.conftest import RecordingHandler
 from tests.helpers.catalogue import CompleteCatalogue
 
@@ -133,6 +133,167 @@ class TestContextBinding:
         assert first != second
 
 
+class TestEndpoint:
+    def test_carries_the_route_template_rather_than_the_path_sent(
+        self, client: TestClient, records: RecordingHandler
+    ) -> None:
+        client.delete("/resources/123456782")
+
+        assert records.messages_with_event_id("100702")[0]["endpoint"] == "/resources/{id}"
+
+    def test_carries_the_route_template_when_the_method_is_not_allowed(
+        self, client: TestClient, records: RecordingHandler
+    ) -> None:
+        client.get("/resources/123456782")
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["endpoint"] == "/resources/{id}"
+
+    def test_keeps_the_path_sent_when_no_route_matches(self, client: TestClient, records: RecordingHandler) -> None:
+        client.get("/nowhere/7")
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["endpoint"] == "/nowhere/7"
+
+    def test_prefixes_the_routes_of_a_mounted_application(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
+    ) -> None:
+        async def item(request: Request) -> Response:
+            return JSONResponse({})
+
+        register_access_logs(True)
+        app = build_app()
+        app.mount("/sub", Starlette(routes=[Route("/items/{item_id}", item)]))
+        app.add_middleware(RequestContextMiddleware)
+
+        TestClient(app).get("/sub/items/7")
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["endpoint"] == "/sub/items/{item_id}"
+
+    def test_maps_access_event_ids_under_a_plain_starlette_router(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler
+    ) -> None:
+        async def delete(request: Request) -> Response:
+            return JSONResponse({})
+
+        register_access_logs(True)
+        app = Starlette(routes=[Route("/resources/{id}", delete, methods=["DELETE"])])
+        app.add_middleware(RequestContextMiddleware)
+
+        TestClient(app).delete("/resources/7")
+
+        assert records.with_event_id("100702")
+
+
+def set_user() -> None:
+    set_context({"user_id": "u-1"})
+
+
+async def set_user_async() -> None:
+    set_context({"user_id": "u-1"})
+
+
+class Refused(Exception):
+    pass
+
+
+ExceptionHandler = Callable[[Request, Exception], Awaitable[Response]]
+
+
+class TestSetContext:
+    def _client(self, unhandled: ExceptionHandler | None = None, refused: ExceptionHandler | None = None) -> TestClient:
+        register_context_fields((ContextField(name="user_id", header=None, always_keep=True),))
+        app = build_app()
+
+        @app.get("/login")
+        async def login() -> Response:
+            set_user()
+            return JSONResponse({})
+
+        @app.get("/login-sync")
+        def login_sync() -> Response:
+            set_user()
+            return JSONResponse({})
+
+        @app.get("/login-dependency", dependencies=[Depends(set_user_async)])
+        async def login_dependency() -> Response:
+            return JSONResponse({})
+
+        @app.get("/login-sync-dependency", dependencies=[Depends(set_user)])
+        async def login_sync_dependency() -> Response:
+            return JSONResponse({})
+
+        @app.get("/login-then-refused")
+        async def login_then_refused() -> Response:
+            set_user()
+            raise Refused()
+
+        @app.get("/login-then-read")
+        async def login_then_read(request: Request) -> Response:
+            set_user()
+            values = request.state.request_context.values
+            return JSONResponse({"user_id": values["user_id"], "writable": isinstance(values, MutableMapping)})
+
+        @app.get("/login-then-boom")
+        async def login_then_boom() -> Response:
+            set_user()
+            raise ValueError("boom")
+
+        @app.websocket("/login-socket", dependencies=[Depends(set_user_async)])
+        async def login_socket(websocket: WebSocket) -> None:
+            await websocket.accept()
+            await websocket.send_text("connected")
+            await websocket.close()
+
+        if unhandled is not None:
+            app.add_exception_handler(Exception, restore_request_context(unhandled))
+        if refused is not None:
+            app.add_exception_handler(Refused, refused)
+        app.add_middleware(RequestContextMiddleware)
+        return TestClient(app, raise_server_exceptions=False)
+
+    @pytest.mark.parametrize("path", ["/login", "/login-sync", "/login-dependency", "/login-sync-dependency"])
+    def test_a_value_set_while_handling_the_request_reaches_the_access_record(
+        self, catalogue: type[CompleteCatalogue], records: RecordingHandler, path: str
+    ) -> None:
+        self._client().get(path)
+
+        assert records.messages_with_event_id(ACCESS_EVENT_ID)[0]["user_id"] == "u-1"
+
+    def test_a_value_set_in_the_endpoint_reaches_the_unhandled_exception_handler(
+        self, catalogue: type[CompleteCatalogue]
+    ) -> None:
+        seen: dict[str, Any] = {}
+
+        async def handler(request: Request, exc: Exception) -> Response:
+            seen.update(collect_context())
+            return JSONResponse({}, status_code=500)
+
+        self._client(unhandled=handler).get("/login-then-boom")
+
+        assert seen["user_id"] == "u-1"
+
+    def test_a_value_set_in_the_endpoint_reaches_the_handler_of_a_refused_request(
+        self, catalogue: type[CompleteCatalogue]
+    ) -> None:
+        seen: dict[str, Any] = {}
+
+        async def handler(request: Request, exc: Exception) -> Response:
+            seen.update(collect_context())
+            return JSONResponse({}, status_code=403)
+
+        self._client(refused=handler).get("/login-then-refused")
+
+        assert seen["user_id"] == "u-1"
+
+    def test_the_request_context_shows_a_value_set_in_the_endpoint_but_cannot_change_it(
+        self, catalogue: type[CompleteCatalogue]
+    ) -> None:
+        assert self._client().get("/login-then-read").json() == {"user_id": "u-1", "writable": False}
+
+    def test_a_websocket_route_without_request_context_connects(self, catalogue: type[CompleteCatalogue]) -> None:
+        with self._client().websocket_connect("/login-socket") as websocket:
+            assert websocket.receive_text() == "connected"
+
+
 class TestResponseHeaders:
     def test_echoes_the_request_id(self, client: TestClient) -> None:
         assert client.get("/ok").headers[REQUEST_ID_HEADER]
@@ -218,10 +379,12 @@ class TestAccessLogging:
 
         assert records.with_event_id(ACCESS_EVENT_ID)
 
-    def test_still_logs_when_the_handler_raised(self, client: TestClient, records: RecordingHandler) -> None:
-        client.get("/boom")
+    def test_logs_the_500_the_client_gets_when_the_handler_raised(
+        self, client: TestClient, records: RecordingHandler
+    ) -> None:
+        assert client.get("/boom").status_code == 500
 
-        assert records.with_event_id(ACCESS_EVENT_ID)[0].status_code is None  # type: ignore[attr-defined]
+        assert records.with_event_id(ACCESS_EVENT_ID)[0].status_code == 500  # type: ignore[attr-defined]
 
     def test_logs_nothing_when_the_configuration_leaves_access_logs_off(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
@@ -327,14 +490,16 @@ class TestClientAddress:
         assert body["ip"] != "203.0.113.7"
 
     def test_reads_the_forwarded_header_when_a_proxy_is_trusted(self, catalogue: type[CompleteCatalogue]) -> None:
-        trusting = build_client(trust_forwarded_for=True)
+        register_config(ConfigLogging(trust_forwarded_for=True))
+        trusting = build_client()
 
         body = trusting.get("/context", headers={"X-Forwarded-For": "203.0.113.7"}).json()
 
         assert body["ip"] == "203.0.113.7"
 
     def test_takes_the_leftmost_entry_of_a_forwarded_chain(self, catalogue: type[CompleteCatalogue]) -> None:
-        trusting = build_client(trust_forwarded_for=True)
+        register_config(ConfigLogging(trust_forwarded_for=True))
+        trusting = build_client()
 
         body = trusting.get("/context", headers={"X-Forwarded-For": "203.0.113.7, 10.0.0.1"}).json()
 
@@ -343,7 +508,8 @@ class TestClientAddress:
     def test_falls_back_to_the_connection_when_the_header_is_not_an_address(
         self, catalogue: type[CompleteCatalogue]
     ) -> None:
-        trusting = build_client(trust_forwarded_for=True)
+        register_config(ConfigLogging(trust_forwarded_for=True))
+        trusting = build_client()
 
         body = trusting.get("/context", headers={"X-Forwarded-For": "not-an-ip"}).json()
 
@@ -354,7 +520,8 @@ class TestCorrelationIdExpected:
     def test_logs_when_a_required_correlation_id_is_missing(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
     ) -> None:
-        client = build_client(correlation_id_expected=True)
+        register_config(ConfigLogging(correlation_id_expected=True))
+        client = build_client()
 
         client.get("/ok")
 
@@ -365,7 +532,8 @@ class TestCorrelationIdExpected:
     def test_stays_quiet_when_the_correlation_id_is_present(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
     ) -> None:
-        client = build_client(correlation_id_expected=True)
+        register_config(ConfigLogging(correlation_id_expected=True))
+        client = build_client()
 
         client.get("/ok", headers={CORRELATION_ID_HEADER: "corr-1"})
 
@@ -487,6 +655,13 @@ class TestRestoreRequestContext:
 
 
 class TestRequestContext:
+    def test_its_values_cannot_be_changed_through_it(self) -> None:
+        scope = {"type": "http", "method": "GET", "path": "/ok", "headers": [], "client": ("10.0.0.7", 5000)}
+        context = RequestContext.from_request(Request(scope))
+
+        with pytest.raises(TypeError):
+            context.values["request_id"] = "replaced"  # type: ignore[index]
+
     def test_reports_unset_for_fields_it_does_not_carry(self) -> None:
         context = RequestContext(values={})
 

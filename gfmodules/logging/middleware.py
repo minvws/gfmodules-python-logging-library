@@ -4,16 +4,19 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
+from http import HTTPStatus
+from types import MappingProxyType
 from typing import Any, TypeVar, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.types import ASGIApp
+from starlette.routing import BaseRoute, Host, Match, Mount
+from starlette.types import ASGIApp, Scope
 
 from gfmodules.logging.context import (
     CLIENT_IP_HEADER,
@@ -22,11 +25,12 @@ from gfmodules.logging.context import (
     REQUEST_ID_HEADER,
     UNSET,
     bind_context,
+    bind_request_values,
     extract_context,
 )
 from gfmodules.logging.events import EventCatalogue
 from gfmodules.logging.loggers import access_logger_name, internal_logger_name
-from gfmodules.logging.registry import active_access_logs, resolve_catalogue
+from gfmodules.logging.registry import active_access_logs, registered_config, resolve_catalogue
 
 __all__ = [
     "RequestContext",
@@ -79,12 +83,7 @@ class RequestContext:
         reuse_request_state_id: bool = False,
         trust_forwarded_for: bool = False,
     ) -> "RequestContext":
-        values = extract_context(request.headers)
-        values["request_id"] = _request_id(request, reuse_request_state_id)
-        values["ip"] = _client_ip(request, trust_forwarded_for)
-        values["endpoint"] = request.url.path
-        values["method"] = request.method
-        return cls(values=values)
+        return cls(values=MappingProxyType(_request_values(request, reuse_request_state_id, trust_forwarded_for)))
 
     def apply_to(self, response: Response) -> None:
         """Echo the correlation headers back to the caller."""
@@ -107,6 +106,15 @@ def _client_ip(request: Request, trust_forwarded_for: bool) -> str:
             except ValueError:
                 _internal_logger().debug("%s did not carry a usable address", CLIENT_IP_HEADER)
     return request.client.host if request.client else UNSET
+
+
+def _request_values(request: Request, reuse_request_state_id: bool, trust_forwarded_for: bool) -> dict[str, str]:
+    values = extract_context(request.headers)
+    values["request_id"] = _request_id(request, reuse_request_state_id)
+    values["ip"] = _client_ip(request, trust_forwarded_for)
+    values["endpoint"] = _route_path(request)
+    values["method"] = request.method
+    return values
 
 
 def _request_id(request: Request, reuse_request_state_id: bool) -> str:
@@ -160,11 +168,27 @@ def restore_request_context(handler: _HandlerT) -> _HandlerT:
     return cast(_HandlerT, wrapper)
 
 
-def _router_path(request: Request) -> str:
-    route = request.scope.get("route")
-    if route and hasattr(route, "path"):
-        return str(route.path)
-    return UNSET
+def _route_path(request: Request) -> str:
+    routes = getattr(getattr(request.scope.get("app"), "router", None), "routes", ())
+    return _matched_path(routes, request.scope) or request.url.path
+
+
+def _matched_path(routes: Iterable[BaseRoute], scope: Scope) -> str | None:
+    partial: tuple[BaseRoute, Scope] | None = None
+    for route in routes:
+        match, child_scope = route.matches(scope)
+        if match is Match.FULL:
+            return _template(route, {**scope, **child_scope})
+        if match is Match.PARTIAL and partial is None:
+            partial = (route, {**scope, **child_scope})
+    return _template(*partial) if partial else None
+
+
+def _template(route: BaseRoute, scope: Scope) -> str:
+    path = str(getattr(route, "path", ""))
+    if isinstance(route, Mount | Host):
+        return path + (_matched_path(route.routes, scope) or "")
+    return path
 
 
 async def _read_body(request: Request, max_bytes: int) -> tuple[str, bool]:
@@ -190,33 +214,29 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         *,
         catalogue: type[EventCatalogue] | None = None,
-        correlation_id_expected: bool = False,
         capture_body_methods: Sequence[str] = (),
         max_body_bytes: int = 4096,
         reuse_request_state_id: bool = False,
-        trust_forwarded_for: bool = False,
     ) -> None:
         super().__init__(app)
+        config = registered_config()
         self.catalogue = catalogue
-        self.correlation_id_expected = correlation_id_expected
+        self.correlation_id_expected = config.correlation_id_expected
         self.access_logs = active_access_logs()
         # Off unless asked for: a body is the likeliest place for the data an
         # application least wants logged, and the console applies no allow-list.
         self.capture_body_methods = tuple(method.upper() for method in capture_body_methods)
         self.max_body_bytes = max_body_bytes
         self.reuse_request_state_id = reuse_request_state_id
-        self.trust_forwarded_for = trust_forwarded_for
+        self.trust_forwarded_for = config.trust_forwarded_for
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         catalogue = resolve_catalogue(self.catalogue)
-        context = RequestContext.from_request(
-            request,
-            reuse_request_state_id=self.reuse_request_state_id,
-            trust_forwarded_for=self.trust_forwarded_for,
-        )
+        values = _request_values(request, self.reuse_request_state_id, self.trust_forwarded_for)
+        context = RequestContext(values=MappingProxyType(values))
         setattr(request.state, _REQUEST_CONTEXT_STATE_KEY, context)
 
-        with bind_context(context.values):
+        with bind_request_values(values):
             if self.correlation_id_expected and context.correlation_id == UNSET:
                 catalogue.event(
                     _internal_logger(),
@@ -235,18 +255,18 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 return response
             finally:
                 if self.access_logs:
-                    self._log_access(catalogue, request, response, body, start)
+                    self._log_access(catalogue, context, response, body, start)
 
     def _log_access(
         self,
         catalogue: type[EventCatalogue],
-        request: Request,
+        context: RequestContext,
         response: Response | None,
         body: tuple[str, bool] | None,
         start: float,
     ) -> None:
         fields: dict[str, Any] = {
-            "status_code": response.status_code if response is not None else None,
+            "status_code": response.status_code if response is not None else HTTPStatus.INTERNAL_SERVER_ERROR.value,
             "duration_ms": round((time.perf_counter() - start) * 1000),
         }
         if body is not None:
@@ -260,7 +280,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             catalogue.ACCESS_REQUEST,
             "access",
             fields=fields,
-            event_id=catalogue.access_event_id.get((request.method, _router_path(request))),
+            event_id=catalogue.access_event_id.get((context.method, context.endpoint)),
         )
 
 

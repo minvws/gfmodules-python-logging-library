@@ -1,8 +1,9 @@
 import logging
 import signal
 import sys
-from collections.abc import AsyncGenerator, Mapping
-from contextlib import asynccontextmanager
+import threading
+from collections.abc import AsyncGenerator, Generator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from types import FrameType, TracebackType
 from typing import Any
 
@@ -12,6 +13,8 @@ from gfmodules.logging.registry import resolve_catalogue
 
 GRACEFUL = "graceful"
 CRASH = "crash"
+
+_SHUTDOWN_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 
 
 def _logger() -> logging.Logger:
@@ -35,6 +38,25 @@ def reset_shutdown_reason() -> None:
     record_shutdown_reason(GRACEFUL)
 
 
+_reported_crash: BaseException | None = None
+
+
+def _report_crash(logger: logging.Logger, events: type[EventCatalogue], exc: BaseException) -> None:
+    global _reported_crash
+    _reported_crash = exc
+    record_shutdown_reason(CRASH)
+    events.event(
+        logger,
+        events.SYS_APP_CRASHED,
+        "application crashed: uncaught exception",
+        fields={
+            "shutdown_reason": shutdown_reason(),
+            "last_exception_type": type(exc).__name__,
+        },
+        exc_info=exc,
+    )
+
+
 def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] | None = None) -> None:
     """Without this Python prints the traceback to stderr, where it leaks into
     the stdout logs instead of staying in the debug stream.
@@ -48,23 +70,27 @@ def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] |
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_tb)
             return
-        record_shutdown_reason(CRASH)
+        if exc_value is not _reported_crash:
+            _report_crash(logger, resolve_catalogue(catalogue), exc_value)
+
+    def thread_hook(args: threading.ExceptHookArgs) -> None:
+        if issubclass(args.exc_type, SystemExit):
+            return
         events = resolve_catalogue(catalogue)
+        thread_name = args.thread.name if args.thread else "unknown"
         events.event(
             logger,
-            events.SYS_APP_CRASHED,
-            "application crashed: uncaught exception",
-            fields={
-                "shutdown_reason": shutdown_reason(),
-                "last_exception_type": exc_type.__name__,
-            },
-            exc_info=(exc_type, exc_value, exc_tb),
+            events.SYS_UNHANDLED_EXCEPTION,
+            f"unhandled exception in thread {thread_name}",
+            fields={"exception_type": args.exc_type.__name__},
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
         )
 
     sys.excepthook = hook
+    threading.excepthook = thread_hook
 
 
-def install_signal_handlers(signals: tuple[signal.Signals, ...] = (signal.SIGTERM, signal.SIGINT)) -> None:
+def install_signal_handlers(signals: tuple[signal.Signals, ...] = _SHUTDOWN_SIGNALS) -> None:
     """Delegates to the handler already installed, typically uvicorn's, so
     graceful shutdown keeps working.
     """
@@ -80,6 +106,9 @@ def install_signal_handlers(signals: tuple[signal.Signals, ...] = (signal.SIGTER
                 record_shutdown_reason(f"signal:{signal.Signals(signum).name}")
                 if callable(prev):
                     prev(raised, frame)
+                elif prev is not signal.SIG_IGN:
+                    signal.signal(signum, signal.SIG_DFL)
+                    signal.raise_signal(signum)
 
             return handler
 
@@ -88,6 +117,20 @@ def install_signal_handlers(signals: tuple[signal.Signals, ...] = (signal.SIGTER
         except (ValueError, OSError) as exc:
             # Silence would cost the shutdown reason: a killed process would report a graceful stop.
             _logger().warning("could not install a handler for %s: %s", sig.name, exc)
+
+
+@contextmanager
+def _recording_signals() -> Generator[None]:
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    found = {sig: signal.getsignal(sig) for sig in _SHUTDOWN_SIGNALS}
+    install_signal_handlers(_SHUTDOWN_SIGNALS)
+    try:
+        yield
+    finally:
+        for sig, handler in found.items():
+            signal.signal(sig, handler)
 
 
 @asynccontextmanager
@@ -105,7 +148,8 @@ async def lifespan_logging(
     Started event includes version, config_path, and custom started_fields.
     Stopped event includes shutdown_reason and custom stopped_fields.
     Field mappings are evaluated when their event fires, allowing stopped_fields
-    to be updated during the run. Crashes are handled by excepthook.
+    to be updated during the run. An exception raised through it is
+    reported as a crash instead of a stop.
     """
     events = resolve_catalogue(catalogue)
     events.event(
@@ -115,7 +159,11 @@ async def lifespan_logging(
         fields={**(started_fields or {}), "version": version, "config_path": config_path},
     )
     try:
-        yield
+        with _recording_signals():
+            yield
+    except Exception as exc:
+        _report_crash(logger, events, exc)
+        raise
     finally:
         if shutdown_reason() != CRASH:
             events.event(

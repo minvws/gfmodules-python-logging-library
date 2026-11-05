@@ -20,7 +20,7 @@ from gfmodules.logging.context import (
     collect_context,
     correlation_headers,
     register_context_fields,
-    update_context,
+    set_context,
 )
 from gfmodules.logging.events import (
     REQUIRED_EVENTS,
@@ -33,7 +33,6 @@ from gfmodules.logging.events import (
     emit,
     missing_events,
     reserved_field_names,
-    set_strict_fields,
     unset_event_ids,
     validate_catalogue,
 )
@@ -60,8 +59,10 @@ from gfmodules.logging.registry import (
     active_catalogue,
     register_access_logs,
     register_catalogue,
+    register_config,
 )
 from gfmodules.logging.streams import LoggingStreams
+from gfmodules.logging.strict import set_strict_fields
 
 __all__ = [
     "CLIENT_TRACE_ID_HEADER",
@@ -106,10 +107,10 @@ __all__ = [
     "register_catalogue",
     "register_logger_root",
     "reserved_field_names",
+    "set_context",
     "set_strict_fields",
     "shutdown_reason",
     "unset_event_ids",
-    "update_context",
     "validate_catalogue",
 ]
 
@@ -129,11 +130,11 @@ def configure(
     if level not in logging.getLevelNamesMapping():
         raise ValueError(f"invalid loglevel {level}")
 
-    validate_catalogue(catalogue, access_logs=config.access_logs)
+    register_catalogue(catalogue, access_logs=config.access_logs)
     set_strict_fields(strict_fields)
     register_context_fields(catalogue.context_fields)
     register_access_logs(config.access_logs)
-    register_catalogue(catalogue, access_logs=config.access_logs)
+    register_config(config)
     register_logger_root(logger_root)
     document = LogConfigBuilder(logging_config=config, loglevel=level).build()
     try:

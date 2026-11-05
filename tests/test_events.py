@@ -16,12 +16,12 @@ from gfmodules.logging.events import (
     emit,
     missing_events,
     reserved_field_names,
-    set_strict_fields,
     unrouted_fields,
     unset_event_ids,
     validate_catalogue,
 )
 from gfmodules.logging.streams import LoggingStreams
+from gfmodules.logging.strict import set_strict_fields
 from tests.helpers import emitters
 from tests.helpers.catalogue import CompleteCatalogue, IncompleteCatalogue
 
@@ -307,6 +307,9 @@ class TestReservedFieldNames:
 
     def test_the_reserved_set_covers_the_libraries_own_record_keys(self) -> None:
         assert {"event_id", "stream", "field_streams"} <= RESERVED_FIELDS
+
+    def test_the_reserved_set_covers_uvicorns_colored_message(self) -> None:
+        assert "color_message" in RESERVED_FIELDS
 
     def test_a_reserved_field_really_does_break_the_standard_library(self, logger: logging.Logger) -> None:
         """The check is worth having only if the failure it prevents is real."""

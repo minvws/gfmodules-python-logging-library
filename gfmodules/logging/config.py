@@ -1,6 +1,20 @@
 from collections import Counter
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+
+ConsoleStream = Literal["app", "siem", "debug"]
+SyslogStream = Literal["app", "siem", "public_inspect", "debug"]
+
+_MAX_PORT = 65535
+
+
+def syslog_address(path: str) -> tuple[str, int]:
+    host, _, port = path.rpartition(":")
+    host = host.removeprefix("[").removesuffix("]")
+    if not host or not port.isdecimal() or not 0 < int(port) <= _MAX_PORT:
+        raise ValueError(f"syslog_path {path!r} is not host:port, with a port from 1 to {_MAX_PORT}")
+    return host, int(port)
 
 
 class ConfigLogging(BaseModel):
@@ -13,10 +27,16 @@ class ConfigLogging(BaseModel):
     access_logs: bool = Field(default=True)
     # Only enable this where a proxy rewrites X-Forwarded-For; anywhere else the caller might set it.
     trust_forwarded_for: bool = Field(default=False)
-    # Which streams reach stdout as readable text, from "app", "siem" and "debug".
-    # Empty leaves stdout silent.
-    console_streams: list[str] = Field(default=["app", "siem"])
-    syslog_streams: list[str] = Field(default=["app", "siem", "public_inspect"])
+    # Which streams reach stdout as readable text. Empty leaves stdout silent.
+    console_streams: list[ConsoleStream] = Field(default=["app", "siem"])
+    syslog_streams: list[SyslogStream] = Field(default=["app", "siem", "public_inspect"])
+
+    @field_validator("syslog_path")
+    @classmethod
+    def _require_host_and_port(cls, path: str | None) -> str | None:
+        if path:
+            syslog_address(path)
+        return path
 
     @field_validator("console_streams", "syslog_streams")
     @classmethod

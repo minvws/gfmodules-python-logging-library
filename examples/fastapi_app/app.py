@@ -3,8 +3,9 @@
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header
 from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -17,6 +18,8 @@ from gfmodules.logging.exceptions import log_unhandled_exception
 from gfmodules.logging.middleware import RequestContextMiddleware, restore_request_context
 
 logger = logging.getLogger("app.api")
+
+_CALLERS = {"token-1": "caller-1"}
 
 
 class CreateResource(BaseModel):
@@ -36,7 +39,12 @@ def setup_logging(settings: Settings, *, strict_fields: bool = False) -> None:
         strict_fields=strict_fields,
     )
     gflog.install_excepthook(logger)
-    gflog.install_signal_handlers()
+
+
+def identify_caller(authorization: Annotated[str, Header()] = "") -> None:
+    caller_id = _CALLERS.get(authorization.removeprefix("Bearer "))
+    if caller_id is not None:
+        gflog.set_context({"caller_id": caller_id})
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -47,7 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with gflog.lifespan_logging(logger, version=settings.app.version, config_path="/etc/app/config.toml"):
             yield
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, dependencies=[Depends(identify_caller)])
 
     @app.post("/resources")
     async def create(body: CreateResource) -> Response:
@@ -74,10 +82,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(Exception, unhandled)
 
     # Added last so it runs outermost, wrapping every route and handler above.
-    app.add_middleware(
-        RequestContextMiddleware,
-        correlation_id_expected=settings.logging.correlation_id_expected,
-        # capture_body_methods stays unset: no reason to log a create call's contents.
-        trust_forwarded_for=settings.logging.trust_forwarded_for,
-    )
+    # capture_body_methods stays unset: no reason to log a create call's contents.
+    app.add_middleware(RequestContextMiddleware)
     return app

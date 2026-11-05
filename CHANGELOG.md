@@ -1,5 +1,90 @@
 # Changelog
 
+## Unreleased
+
+### Changed (breaking)
+
+- `color_message` is now in `RESERVED_FIELDS`, so a catalogue that declares it
+  as a field fails validation, since the formatters leave it out.
+- `RequestContextMiddleware` no longer takes `correlation_id_expected` and
+  `trust_forwarded_for` arguments. It reads both from the `ConfigLogging`
+  passed to `configure()`, as it already did `access_logs`. Before, both
+  settings did nothing unless the application also passed them to the
+  middleware by hand, and an argument could contradict the configuration.
+  Remove them from `add_middleware()`; passing either now raises a `TypeError`
+  when the middleware is built.
+- `console_streams` and `syslog_streams` on `ConfigLogging` are typed as lists
+  of the stream names each accepts, so an unknown name fails where the
+  configuration loads rather than at `configure()`. A type checker now rejects
+  a plain `list[str]` passed to them.
+- `endpoint` now carries the route template, such as `/patients/{patient_id}`,
+  instead of the path the caller sent. A request that matches no route still carries
+  the path it was sent to.
+- `update_context` is removed in favor of `set_context()`. Its block ended
+  before the access record, the unhandled exception record and the records an
+  exception handler writes for a refused or invalid request, so a value added
+  from a dependency never reached them. Call `set_context()` from the
+  dependency instead, without a block.
+
+### Added
+
+- `install_excepthook()` also installs `threading.excepthook`, so an exception
+  that ends a thread is logged as `SYS_UNHANDLED_EXCEPTION` with its
+  `exception_type` and traceback. Python printed it to stderr before, outside
+  every stream. The process keeps running, so it is not logged as a crash.
+- `set_context()` adds values to the request's context for the rest of the
+  request, even when called inside a `bind_context` block, so they also reach
+  the access record, the unhandled exception record and the records of refused
+  or invalid requests. It refuses the fields the middleware sets, refuses
+  undeclared fields with `strict_fields` on, and does nothing where no context
+  is bound, such as in a WebSocket route.
+
+### Changed
+
+- `event_description` on the log server now has control characters escaped
+  instead of stripped, so an injection attempt stays visible in the SIEM. A
+  newline arrives as `\n` rather than vanishing.
+- `set_strict_fields` moved from `gfmodules.logging.events` to
+  `gfmodules.logging.strict`, since `set_context()` reads it too.
+  `gfmodules.logging` still exports it.
+- `configure()` now validates the catalogue once at boot instead of twice. An
+  invalid catalogue still fails before any other setting is registered.
+
+### Fixed
+
+- `install_signal_handlers()` no longer swallows SIGTERM when no handler came
+  before it, so workers and cron jobs stop again.
+- `lifespan_logging()` now records SIGTERM and SIGINT itself. Calling
+  `install_signal_handlers()` at import, as the docs showed, reported
+  `graceful` under uvicorn. The call is now optional.
+- `lifespan_logging()` now reports an exception raised through it, such as a
+  failed startup, as `SYS_APP_CRASHED` instead of a graceful stop.
+- The plain-text console output now escapes control characters in the message
+  and in field values, so a newline shows as `\n` rather than starting a new
+  line. The message used to have them stripped and field values kept them, so
+  a newline in a value, such as one in a captured request body, could forge
+  extra log lines on stdout.
+- Tracebacks in the plain-text console output are now indented by two spaces,
+  with control characters other than newlines escaped, so an exception message
+  can no longer start a line that passes for a log line.
+- Control characters now include the C1 range and the Unicode line and
+  paragraph separators, which `str.splitlines()` and some log viewers treat as
+  line breaks.
+- Uvicorn's `color_message` no longer shows up as a field. Uvicorn attaches it
+  to its own records as a colored copy of the message, so the console app
+  stream and the debug stream printed ANSI escape codes and an unformatted
+  `%d` after every uvicorn startup line.
+- `ConfigLogging` now rejects a `syslog_path` that is not `host:port` with a
+  port from 1 to 65535, naming the value it was given. A path without a port
+  failed at `configure()` with `not enough values to unpack`, and a port that
+  is not a number with an `int()` error. A bracketed IPv6 host such as
+  `[fd00::1]:5514` now works.
+- Access records now follow the catalogue's routing for `ACCESS_REQUEST`. The
+  app stream let every record from the access logger through by name, so an
+  `ACCESS_REQUEST` routed away from the app stream still reached it.
+- The access record for a request whose handler raised now carries
+  `status_code` 500, the status Starlette answers it with, instead of `null`.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)

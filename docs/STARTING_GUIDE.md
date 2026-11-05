@@ -238,6 +238,11 @@ ConfigLogging(syslog_path="log-server:5514", console_streams=[])       # silence
 An empty list silences stdout, leaving Python's own WARNING-and-above handler
 on stderr. Silencing stdout with no `syslog_path` set leaves no handlers at all.
 
+Control characters in the message and in field values are escaped, so a newline
+shows as `\n` and every record stays on one line. A traceback follows on its own
+lines, each indented by two spaces, so no value or exception message can start a
+line that passes for a log line.
+
 ### What reaches the log server
 
 Each selected stream goes to the log server as JSON over the shared syslog
@@ -252,6 +257,9 @@ ConfigLogging(syslog_path="log-server:5514", syslog_streams=["app", "siem", "pub
 
 `include_traces=False` keeps tracebacks out of the debug stream as well.
 
+Control characters in `event_description` are escaped as on the console, so an
+injection attempt arrives as a visible `\n` rather than vanishing.
+
 `configure()` builds its dict config through `LogConfigBuilder`, which is
 exported for an application that needs to inspect or extend it.
 
@@ -262,17 +270,47 @@ from gfmodules.logging.middleware import RequestContextMiddleware
 
 app.add_middleware(
     RequestContextMiddleware,
-    correlation_id_expected=config.logging.correlation_id_expected,
     capture_body_methods=(),                          # ("POST",) to log request bodies
     max_body_bytes=4096,                              # bodies past this are truncated
     reuse_request_state_id=False,                     # True to honour an upstream request id
-    trust_forwarded_for=config.logging.trust_forwarded_for,
 )
 ```
+
+`access_logs`, `correlation_id_expected` and `trust_forwarded_for` are not
+middleware arguments: the middleware takes them from the `ConfigLogging` passed
+to `configure()`, so the configuration is the one place to set them.
 
 Every event logged while a request is being handled picks up the request id,
 client ip, user agent, endpoint, method and correlation metadata automatically,
 so call sites never pass them explicitly.
+
+To add a value the request only learns while it is handled, such as the user
+an authentication dependency resolves, call `set_context` from the endpoint, a
+dependency or the code they call. The value stays for the rest of the request,
+so it also reaches the records written after the endpoint is done: the access
+record, the unhandled exception record, and whatever an exception handler logs
+for a refused or invalid request:
+
+```python
+from gfmodules.logging import set_context
+
+set_context({"user_id": user.id})
+```
+
+`set_context` refuses the fields the middleware sets, such as `request_id`, and
+does nothing where no context is bound, such as in a WebSocket route. Outside a
+request it adds to the innermost `bind_context` block until that block ends.
+Like any context value, the field has to be declared in the catalogue's
+`context_fields` to reach a record. With `strict_fields` on, an undeclared
+field is refused, so a misspelled name fails the test suite instead of
+disappearing.
+
+A field that becomes context can no longer be passed in an event's `fields`,
+because `emit` refuses context field names. Moving a field into context means
+taking it out of every `emit` that passed it. Code that also runs outside a
+request, such as a worker or a test that calls a service directly, then has to
+bind the field itself with `bind_context`, since `set_context` has nothing to
+add to there.
 
 **Access records need this middleware, not just `configure()`.** `access_logs`
 defaults to `True` in `ConfigLogging`, but that only decides whether *this*
@@ -282,8 +320,8 @@ binding never happens and no event, access or otherwise, picks up the request
 id, client ip or endpoint. Set `access_logs=False` to opt an application out
 even with the middleware added.
 
-**`configure()` has to run before this.** The middleware reads the setting once,
-when it is built, and holds it for the life of the application. Added before
+**`configure()` has to run before this.** The middleware reads these settings
+once, when it is built, and holds them for the life of the application. Added before
 `configure()`, it has nothing to read and says so:
 
 ```text
@@ -300,9 +338,14 @@ is set by the caller. Set `trust_forwarded_for` only where a proxy in front of
 the application rewrites it; then its leftmost entry is used, and only if it
 parses as an address.
 
-Per-route access event ids rely on `scope["route"]`, which FastAPI's `APIRoute`
-sets and a bare Starlette `Route` does not. Under a plain Starlette router,
-access records fall back to the catalogue's `ACCESS_REQUEST` id.
+`endpoint` is the route template, such as `/patients/{patient_id}`, rather than
+the path the caller sent, so an identifier in the path stays out of every
+stream. A route in a mounted application carries the mount prefix. A request
+that matches no route keeps the path it was sent to.
+
+Per-route access event ids are looked up by method and that same route
+template, under FastAPI and plain Starlette routers alike. A request that
+matches no mapped route falls back to the catalogue's `ACCESS_REQUEST` id.
 
 ## 4. Wire the application lifecycle
 
@@ -310,7 +353,6 @@ access records fall back to the catalogue's `ACCESS_REQUEST` id.
 from contextlib import asynccontextmanager
 
 gflog.install_excepthook(logger)
-gflog.install_signal_handlers()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -319,10 +361,23 @@ async def lifespan(app: FastAPI):
         yield
 ```
 
+`install_excepthook` also reports an exception that ends a thread, as
+`SYS_UNHANDLED_EXCEPTION` with its `exception_type`. The process keeps running,
+so it is not a crash.
+
 `lifespan_logging` is a composable context manager rather than something you
 pass to `FastAPI(lifespan=...)`, so it sits alongside whatever else the
-application does at startup. After a crash it emits no stopped event, because the
-excepthook has already reported it.
+application does at startup. An exception raised through it, at startup or at
+shutdown, is reported as `SYS_APP_CRASHED` instead of a stopped event: uvicorn
+catches those itself, so the excepthook never sees them. After a crash the
+excepthook reported, it emits no stopped event either.
+
+While the application runs, `lifespan_logging` records a SIGTERM or SIGINT as the
+shutdown reason and passes the signal on to the server, so its graceful shutdown
+still runs. It sets this up at startup rather than at import, because uvicorn
+replaces any handler installed before it starts serving. A process without a
+lifespan, such as a worker or a script, calls `gflog.install_signal_handlers()`
+itself.
 
 The two events carry their own fields: how the process was configured belongs on
 started, what it ended up doing on stopped.
@@ -371,18 +426,13 @@ def log_rejected_request(logger, reason, fields=None):
 ## 6. Bind context outside a request
 
 The middleware is not the only way in. `bind_context` attaches context to
-anything logged inside the block, which is what a worker or a CLI needs, and
-`update_context` adds to what is already bound without replacing it:
+anything logged inside the block, which is what a worker or a CLI needs:
 
 ```python
-from gfmodules.logging import bind_context, update_context
+from gfmodules.logging import bind_context
 
 with bind_context({"correlation_id": message.correlation_id}):
     handle(message)          # everything logged in here carries it
-
-# inside a request, once authentication resolves the subject
-with update_context({"tenant_id": subject.tenant}):
-    ...
 ```
 
 A field only survives to the record if it was declared, either as a standard
