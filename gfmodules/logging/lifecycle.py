@@ -73,7 +73,21 @@ def install_excepthook(logger: logging.Logger, catalogue: type[EventCatalogue] |
         if exc_value is not _reported_crash:
             _report_crash(logger, resolve_catalogue(catalogue), exc_value)
 
+    def thread_hook(args: threading.ExceptHookArgs) -> None:
+        if issubclass(args.exc_type, SystemExit):
+            return
+        events = resolve_catalogue(catalogue)
+        thread_name = args.thread.name if args.thread else "unknown"
+        events.event(
+            logger,
+            events.SYS_UNHANDLED_EXCEPTION,
+            f"unhandled exception in thread {thread_name}",
+            fields={"exception_type": args.exc_type.__name__},
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+
     sys.excepthook = hook
+    threading.excepthook = thread_hook
 
 
 def install_signal_handlers(signals: tuple[signal.Signals, ...] = _SHUTDOWN_SIGNALS) -> None:
