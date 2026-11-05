@@ -310,7 +310,6 @@ access records fall back to the catalogue's `ACCESS_REQUEST` id.
 from contextlib import asynccontextmanager
 
 gflog.install_excepthook(logger)
-gflog.install_signal_handlers()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -321,8 +320,17 @@ async def lifespan(app: FastAPI):
 
 `lifespan_logging` is a composable context manager rather than something you
 pass to `FastAPI(lifespan=...)`, so it sits alongside whatever else the
-application does at startup. After a crash it emits no stopped event, because the
-excepthook has already reported it.
+application does at startup. An exception raised through it, at startup or at
+shutdown, is reported as `SYS_APP_CRASHED` instead of a stopped event: uvicorn
+catches those itself, so the excepthook never sees them. After a crash the
+excepthook reported, it emits no stopped event either.
+
+While the application runs, `lifespan_logging` records a SIGTERM or SIGINT as the
+shutdown reason and passes the signal on to the server, so its graceful shutdown
+still runs. It sets this up at startup rather than at import, because uvicorn
+replaces any handler installed before it starts serving. A process without a
+lifespan, such as a worker or a script, calls `gflog.install_signal_handlers()`
+itself.
 
 The two events carry their own fields: how the process was configured belongs on
 started, what it ended up doing on stopped.
