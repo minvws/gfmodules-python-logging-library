@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed (breaking)
+
+- `endpoint` now carries the route template, such as `/patients/{patient_id}`,
+  instead of the path the caller sent. A request that matches no route still carries
+  the path it was sent to.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)

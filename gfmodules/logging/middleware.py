@@ -4,7 +4,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
@@ -13,7 +13,8 @@ from typing import Any, TypeVar, cast
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.types import ASGIApp
+from starlette.routing import BaseRoute, Host, Match, Mount
+from starlette.types import ASGIApp, Scope
 
 from gfmodules.logging.context import (
     CLIENT_IP_HEADER,
@@ -82,7 +83,7 @@ class RequestContext:
         values = extract_context(request.headers)
         values["request_id"] = _request_id(request, reuse_request_state_id)
         values["ip"] = _client_ip(request, trust_forwarded_for)
-        values["endpoint"] = request.url.path
+        values["endpoint"] = _route_path(request)
         values["method"] = request.method
         return cls(values=values)
 
@@ -160,11 +161,27 @@ def restore_request_context(handler: _HandlerT) -> _HandlerT:
     return cast(_HandlerT, wrapper)
 
 
-def _router_path(request: Request) -> str:
-    route = request.scope.get("route")
-    if route and hasattr(route, "path"):
-        return str(route.path)
-    return UNSET
+def _route_path(request: Request) -> str:
+    routes = getattr(getattr(request.scope.get("app"), "router", None), "routes", ())
+    return _matched_path(routes, request.scope) or request.url.path
+
+
+def _matched_path(routes: Iterable[BaseRoute], scope: Scope) -> str | None:
+    partial: tuple[BaseRoute, Scope] | None = None
+    for route in routes:
+        match, child_scope = route.matches(scope)
+        if match is Match.FULL:
+            return _template(route, {**scope, **child_scope})
+        if match is Match.PARTIAL and partial is None:
+            partial = (route, {**scope, **child_scope})
+    return _template(*partial) if partial else None
+
+
+def _template(route: BaseRoute, scope: Scope) -> str:
+    path = str(getattr(route, "path", ""))
+    if isinstance(route, Mount | Host):
+        return path + (_matched_path(route.routes, scope) or "")
+    return path
 
 
 async def _read_body(request: Request, max_bytes: int) -> tuple[str, bool]:
@@ -235,12 +252,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 return response
             finally:
                 if self.access_logs:
-                    self._log_access(catalogue, request, response, body, start)
+                    self._log_access(catalogue, context, response, body, start)
 
     def _log_access(
         self,
         catalogue: type[EventCatalogue],
-        request: Request,
+        context: RequestContext,
         response: Response | None,
         body: tuple[str, bool] | None,
         start: float,
@@ -260,7 +277,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             catalogue.ACCESS_REQUEST,
             "access",
             fields=fields,
-            event_id=catalogue.access_event_id.get((request.method, _router_path(request))),
+            event_id=catalogue.access_event_id.get((context.method, context.endpoint)),
         )
 
 
