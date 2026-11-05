@@ -8,7 +8,8 @@ from gfmodules.logging.context import always_kept_field_names, collect_context
 from gfmodules.logging.events import RESERVED_FIELDS
 from gfmodules.logging.streams import LoggingStreams
 
-_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+_TRACE_INDENT = "  "
 
 
 def _allowed_on(
@@ -23,8 +24,16 @@ def _allowed_on(
     return {key: value for key, value in data.items() if key in allowed}
 
 
-def _sanitize_message(value: str) -> str:
-    return _CONTROL_CHARS.sub("", value)
+def _escape(control_char: re.Match[str]) -> str:
+    return control_char.group().encode("unicode_escape").decode()
+
+
+def _escape_control_chars(value: str) -> str:
+    return _CONTROL_CHARS.sub(_escape, value)
+
+
+def _sanitize_trace(trace: str) -> str:
+    return "\n".join(f"{_TRACE_INDENT}{_escape_control_chars(line)}" for line in trace.split("\n"))
 
 
 def _collect_extras(record: logging.LogRecord) -> dict[str, Any]:
@@ -64,7 +73,7 @@ class JsonFormatter(logging.Formatter):
             "event_id": getattr(record, "event_id", None),
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
-            "event_description": _sanitize_message(record.getMessage()),
+            "event_description": _escape_control_chars(record.getMessage()),
             "source": f"{record.module}:{record.lineno}",
         }
         if self.application_id is not None:
@@ -92,13 +101,15 @@ class PlainTextFormatter(logging.Formatter):
         timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         event_id = getattr(record, "event_id", None) or "-"
         stream_tag = f" [{self.stream_id}]" if self.stream_id else ""
-        base = f"{timestamp}{stream_tag} {record.levelname:<8} {record.name} [{event_id}] {_sanitize_message(record.getMessage())}"
+        base = f"{timestamp}{stream_tag} {record.levelname:<8} {record.name} [{event_id}] {_escape_control_chars(record.getMessage())}"
 
         data = {**collect_context(), **_collect_extras(record)}
-        pairs = [f"{key}={value}" for key, value in _allowed_on(record, self.stream, data).items()]
+        pairs = [
+            _escape_control_chars(f"{key}={value}") for key, value in _allowed_on(record, self.stream, data).items()
+        ]
 
         out = base if not pairs else f"{base} {' '.join(pairs)}"
 
         if record.exc_info and self.include_traces:
-            out = f"{out}\n{self.formatException(record.exc_info)}"
+            out = f"{out}\n{_sanitize_trace(self.formatException(record.exc_info))}"
         return out
