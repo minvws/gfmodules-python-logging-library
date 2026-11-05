@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `configure()` now validates the catalogue once at boot instead of twice. An
+  invalid catalogue still fails before any other setting is registered.
+
 ## 0.7.0 - 2026-11-02
 
 ### Changed (breaking)
