@@ -16,9 +16,12 @@ def make_record(name: str = "app.service", streams: list[LoggingStreams] | None 
 
 
 class TestAppFilter:
-    @pytest.mark.parametrize("name", ["uvicorn", "uvicorn.error", "app.access"])
-    def test_passes_uvicorn_and_access_loggers_without_stream(self, name: str) -> None:
+    @pytest.mark.parametrize("name", ["uvicorn", "uvicorn.error"])
+    def test_passes_uvicorn_loggers_without_stream(self, name: str) -> None:
         assert AppFilter().filter(make_record(name=name)) is True
+
+    def test_leaves_the_access_logger_to_the_catalogue_routing(self) -> None:
+        assert AppFilter().filter(make_record(name="app.access", streams=[LoggingStreams.SIEM])) is False
 
     def test_passes_records_routed_to_app(self) -> None:
         assert AppFilter().filter(make_record(streams=[LoggingStreams.APP])) is True
