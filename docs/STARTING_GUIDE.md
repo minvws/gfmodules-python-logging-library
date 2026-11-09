@@ -276,10 +276,6 @@ app.add_middleware(
 )
 ```
 
-`access_logs`, `correlation_id_expected` and `trust_forwarded_for` are not
-middleware arguments: the middleware takes them from the `ConfigLogging` passed
-to `configure()`, so the configuration is the one place to set them.
-
 Every event logged while a request is being handled picks up the request id,
 client ip, user agent, endpoint, method and correlation metadata automatically,
 so call sites never pass them explicitly.
@@ -292,9 +288,9 @@ binding never happens and no event, access or otherwise, picks up the request
 id, client ip or endpoint. Set `access_logs=False` to opt an application out
 even with the middleware added.
 
-**`configure()` has to run before this.** The middleware reads these settings
-once, when it is built, and holds them for the life of the application. Added before
-`configure()`, it has nothing to read and says so:
+**`configure()` has to run before this.** The middleware reads its settings
+from the configuration once, when it is built, and holds them for the life of
+the application. Added before `configure()`, it has nothing to read and says so:
 
 ```text
 RuntimeError: access logging setting unknown: call gfmodules.logging.configure() before adding the middleware
