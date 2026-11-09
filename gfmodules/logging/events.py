@@ -285,7 +285,7 @@ class DefaultEventCatalogue(EventCatalogue):
         "100",
         logging.INFO,
         (_APP,),
-        {_APP: ("endpoint", "method", "status_code", "duration_ms", "body", "body_truncated")},
+        {_APP: ("endpoint", "method", "status_code", "status_code_missing", "duration_ms", "body", "body_truncated")},
     )
 
 

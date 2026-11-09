@@ -25,6 +25,11 @@
   exception handler writes for a refused or invalid request, so a value added
   from a dependency never reached them. Call `set_context()` from the
   dependency instead, without a block.
+- `ACCESS_REQUEST` routes a new field, `status_code_missing`. A catalogue that
+  declares its own `ACCESS_REQUEST` with an allow-list adds
+  `status_code_missing` to it. Otherwise the field is dropped, and with
+  `strict_fields=True` logging the access record of a request whose handler
+  raised fails.
 
 ### Added
 
@@ -83,7 +88,10 @@
   app stream let every record from the access logger through by name, so an
   `ACCESS_REQUEST` routed away from the app stream still reached it.
 - The access record for a request whose handler raised now carries
-  `status_code` 500, the status Starlette answers it with, instead of `null`.
+  `status_code` 500, the status Starlette answers it with, instead of `null`,
+  and a `status_code_missing` message saying so. The middleware never sees
+  that response, so a handler registered for `Exception` or a middleware added
+  after this one can answer with another status than the record says.
 
 ## 0.7.0 - 2026-11-02
 
