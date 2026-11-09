@@ -40,7 +40,7 @@ The request context also holds these, but an event carries them only on the stre
 | `RESOURCE_DELETED` | 100701 | INFO | `resource_id`, `reason` |
 | `LOOKUP_REJECTED` | 100702 | WARNING | `resource_id`, `error_reason` |
 | `LOOKUP_MALFORMED` | 100702 | WARNING | `resource_id`, `error_reason` |
-| `ACCESS_REQUEST` | 100 | INFO | `endpoint`, `method`, `status_code`, `duration_ms`, `body`, `body_truncated`, `caller_id` |
+| `ACCESS_REQUEST` | 100 | INFO | `endpoint`, `method`, `status_code`, `status_code_missing`, `duration_ms`, `body`, `body_truncated`, `caller_id` |
 
 ## Stream `siem`
 

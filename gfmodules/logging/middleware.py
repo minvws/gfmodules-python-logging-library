@@ -269,6 +269,22 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             "status_code": response.status_code if response is not None else HTTPStatus.INTERNAL_SERVER_ERROR.value,
             "duration_ms": round((time.perf_counter() - start) * 1000),
         }
+        if response is None:
+            # Starlette builds the stack from the outside in:
+            #   ServerErrorMiddleware -> user middlewares -> ExceptionMiddleware -> router
+            # ExceptionMiddleware turns an HTTPException, or an exception the app
+            # registered a handler for (other than Exception or 500), into a
+            # response before it gets back here.
+            # Any other exception gets back here as an exception: call_next
+            # raises, and there is no response to read the status code from.
+            # ServerErrorMiddleware turns it into a response, but only after this
+            # middleware has logged. By default it answers 500. A handler
+            # registered for Exception or 500, or a middleware added after this
+            # one, can answer with another status instead.
+            # So the 500 logged here is a guess, and the message says so.
+            fields["status_code_missing"] = (
+                f"No response to read the status code from, logging it as {fields['status_code']}"
+            )
         if body is not None:
             text, truncated = body
             # A truncated body is no longer parseable, so it stays a string.
