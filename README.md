@@ -49,7 +49,7 @@ exception handling. Omit it for non-web applications.
    (id, ip, endpoint, method, correlation metadata) automatically.
 
 4. **Wire lifecycle:** Compose `gflog.lifespan_logging()` into your application's
-   startup, and call `gflog.install_excepthook()` and `gflog.install_signal_handlers()`.
+   startup, and call `gflog.install_excepthook()`.
 
 5. **Log events:** Call `gflog.emit(logger, Log.YOUR_EVENT, "message",
    fields={"field": "value"})`. Fields travel as one mapping. Context is attached automatically.
