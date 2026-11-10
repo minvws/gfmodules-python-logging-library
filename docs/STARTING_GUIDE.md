@@ -327,6 +327,17 @@ the application. Added before `configure()`, it has nothing to read and says so:
 RuntimeError: access logging setting unknown: call gfmodules.logging.configure() before adding the middleware
 ```
 
+**Add it last, so it runs outermost.** If an unhandled exception reaches the
+middleware, it never sees a response. The access record therefore uses
+`status_code` 500, Starlette's default for unhandled exceptions, and includes a
+`status_code_missing` message explaining the fallback.
+
+The recorded status may differ from the status actually sent if something
+outside the middleware handles the exception. This can happen with middleware
+added later or a handler registered for `Exception` or `500`. Handlers
+registered for more specific exception classes run inside the middleware, so
+their response status is recorded as sent.
+
 **Request bodies are not logged unless you ask.** A body is the likeliest place
 for the data an application least wants in its logs, and the console handler
 applies no per-stream allow-list, so anything captured reaches stdout in full.

@@ -364,6 +364,7 @@ class TestAccessLogging:
         assert record.status_code == 200  # type: ignore[attr-defined]
         assert record.duration_ms >= 0  # type: ignore[attr-defined]
         assert record.name == "app.access"
+        assert not hasattr(record, "status_code_missing")
 
     def test_uses_the_route_specific_event_id_when_the_catalogue_maps_one(
         self, client: TestClient, records: RecordingHandler
@@ -379,10 +380,14 @@ class TestAccessLogging:
 
         assert records.with_event_id(ACCESS_EVENT_ID)
 
-    def test_still_logs_when_the_handler_raised(self, client: TestClient, records: RecordingHandler) -> None:
-        client.get("/boom")
+    def test_logs_the_500_the_client_gets_when_the_handler_raised(
+        self, client: TestClient, records: RecordingHandler
+    ) -> None:
+        assert client.get("/boom").status_code == 500
 
-        assert records.with_event_id(ACCESS_EVENT_ID)[0].status_code is None  # type: ignore[attr-defined]
+        record = records.with_event_id(ACCESS_EVENT_ID)[0]
+        assert record.status_code == 500  # type: ignore[attr-defined]
+        assert record.status_code_missing == "No response to read the status code from, logging it as 500"  # type: ignore[attr-defined]
 
     def test_logs_nothing_when_the_configuration_leaves_access_logs_off(
         self, catalogue: type[CompleteCatalogue], records: RecordingHandler
