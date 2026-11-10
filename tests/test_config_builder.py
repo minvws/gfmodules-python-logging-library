@@ -316,6 +316,11 @@ class TestSyslogHandlers:
 
         assert handlers["syslog_app"]["address"] == ("fd00::1", 5514)
 
+    def test_a_bracketed_ipv6_host_loses_its_brackets(self) -> None:
+        handlers = build(ConfigLogging(syslog_path="[fd00::1]:5514"))["handlers"]
+
+        assert handlers["syslog_app"]["address"] == ("fd00::1", 5514)
+
     def test_a_debug_console_keeps_the_syslog_handlers(self) -> None:
         conf = build(ConfigLogging(syslog_path=SYSLOG, console_streams=["debug"]))
 

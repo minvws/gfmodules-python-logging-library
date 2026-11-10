@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from pydantic import ValidationError
 
@@ -41,6 +43,16 @@ def test_an_unknown_stream_is_rejected_when_the_configuration_loads(setting: str
 def test_public_inspect_cannot_reach_the_console() -> None:
     with pytest.raises(ValidationError, match="console_streams.0"):
         ConfigLogging.model_validate({"console_streams": ["public_inspect"]})
+
+
+@pytest.mark.parametrize("path", ["syslog", "syslog:", ":5514", "syslog:port", "syslog:0", "syslog:65536", "[::1]"])
+def test_a_syslog_path_that_is_not_host_and_port_is_rejected(path: str) -> None:
+    with pytest.raises(ValidationError, match=re.escape(f"syslog_path {path!r} is not host:port")):
+        ConfigLogging(syslog_path=path)
+
+
+def test_an_empty_syslog_path_still_means_console_only() -> None:
+    assert ConfigLogging(syslog_path="").syslog_path == ""
 
 
 def test_accepts_an_application_supplied_configuration() -> None:
