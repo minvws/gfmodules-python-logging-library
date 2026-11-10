@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed (breaking)
+
+- `color_message` is now in `RESERVED_FIELDS`, so a catalogue that declares it
+  as a field fails validation, since the formatters leave it out.
+
 ### Changed
 
 - `event_description` on the log server now has control characters escaped
@@ -28,6 +33,10 @@
 - Control characters now include the C1 range and the Unicode line and
   paragraph separators, which `str.splitlines()` and some log viewers treat as
   line breaks.
+- Uvicorn's `color_message` no longer shows up as a field. Uvicorn attaches it
+  to its own records as a colored copy of the message, so the console app
+  stream and the debug stream printed ANSI escape codes and an unformatted
+  `%d` after every uvicorn startup line.
 
 ## 0.7.0 - 2026-11-02
 
