@@ -53,6 +53,9 @@
   failed at `configure()` with `not enough values to unpack`, and a port that
   is not a number with an `int()` error. A bracketed IPv6 host such as
   `[fd00::1]:5514` now works.
+- Access records now follow the catalogue's routing for `ACCESS_REQUEST`. The
+  app stream let every record from the access logger through by name, so an
+  `ACCESS_REQUEST` routed away from the app stream still reached it.
 
 ## 0.7.0 - 2026-11-02
 
