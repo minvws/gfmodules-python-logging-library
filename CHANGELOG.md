@@ -17,6 +17,16 @@
   of the stream names each accepts, so an unknown name fails where the
   configuration loads rather than at `configure()`. A type checker now rejects
   a plain `list[str]` passed to them.
+- `endpoint` now carries the route template, such as `/patients/{patient_id}`,
+  instead of the path the caller sent. A request that matches no route still carries
+  the path it was sent to.
+
+### Added
+
+- `install_excepthook()` also installs `threading.excepthook`, so an exception
+  that ends a thread is logged as `SYS_UNHANDLED_EXCEPTION` with its
+  `exception_type` and traceback. Python printed it to stderr before, outside
+  every stream. The process keeps running, so it is not logged as a crash.
 
 ### Changed
 

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import signal
 import sys
+import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -22,6 +23,7 @@ from tests.helpers.catalogue import CompleteCatalogue
 STARTED = CompleteCatalogue.SYS_APP_STARTED.event_id
 STOPPED = CompleteCatalogue.SYS_APP_STOPPED.event_id
 CRASHED = CompleteCatalogue.SYS_APP_CRASHED.event_id
+UNHANDLED = CompleteCatalogue.SYS_UNHANDLED_EXCEPTION.event_id
 
 pytestmark = pytest.mark.usefixtures("catalogue")
 
@@ -263,6 +265,27 @@ class TestExcepthook:
         assert records.with_event_id(CRASHED) == []
         assert shutdown_reason() == "graceful"
 
+    def test_logs_an_exception_that_ends_a_thread_as_unhandled(
+        self, logger: logging.Logger, records: RecordingHandler
+    ) -> None:
+        _run_thread_that_raises(logger, ValueError("boom"))
+
+        record = records.with_event_id(UNHANDLED)[0]
+        assert record.exception_type == "ValueError"  # type: ignore[attr-defined]
+        assert record.getMessage() == "unhandled exception in thread worker"
+        assert record.exc_info is not None
+
+    def test_a_thread_ending_is_not_a_crash(self, logger: logging.Logger, records: RecordingHandler) -> None:
+        _run_thread_that_raises(logger, ValueError("boom"))
+
+        assert records.with_event_id(CRASHED) == []
+        assert shutdown_reason() == "graceful"
+
+    def test_leaves_a_thread_that_exits_alone(self, logger: logging.Logger, records: RecordingHandler) -> None:
+        _run_thread_that_raises(logger, SystemExit())
+
+        assert records.with_event_id(UNHANDLED) == []
+
 
 class TestSignalHandlers:
     def test_records_the_signal_that_asked_us_to_stop(self) -> None:
@@ -345,6 +368,17 @@ def _crash(logger: logging.Logger) -> None:
             sys.excepthook(*sys.exc_info())
 
 
+def _run_thread_that_raises(logger: logging.Logger, exc: BaseException) -> None:
+    def work() -> None:
+        raise exc
+
+    with _restored_excepthook():
+        install_excepthook(logger)
+        thread = threading.Thread(target=work, name="worker")
+        thread.start()
+        thread.join()
+
+
 def _record_signal_shutdown() -> None:
     with _restored_signals():
         signal.signal(signal.SIGTERM, lambda raised, frame: None)
@@ -356,10 +390,10 @@ def _record_signal_shutdown() -> None:
 
 class _restored_excepthook:
     def __enter__(self) -> None:
-        self.previous = sys.excepthook
+        self.previous = (sys.excepthook, threading.excepthook)
 
     def __exit__(self, *exc: object) -> None:
-        sys.excepthook = self.previous
+        sys.excepthook, threading.excepthook = self.previous
 
 
 class _restored_signals:

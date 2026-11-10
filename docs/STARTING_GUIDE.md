@@ -306,9 +306,14 @@ is set by the caller. Set `trust_forwarded_for` only where a proxy in front of
 the application rewrites it; then its leftmost entry is used, and only if it
 parses as an address.
 
-Per-route access event ids rely on `scope["route"]`, which FastAPI's `APIRoute`
-sets and a bare Starlette `Route` does not. Under a plain Starlette router,
-access records fall back to the catalogue's `ACCESS_REQUEST` id.
+`endpoint` is the route template, such as `/patients/{patient_id}`, rather than
+the path the caller sent, so an identifier in the path stays out of every
+stream. A route in a mounted application carries the mount prefix. A request
+that matches no route keeps the path it was sent to.
+
+Per-route access event ids are looked up by method and that same route
+template, under FastAPI and plain Starlette routers alike. A request that
+matches no mapped route falls back to the catalogue's `ACCESS_REQUEST` id.
 
 ## 4. Wire the application lifecycle
 
@@ -323,6 +328,10 @@ async def lifespan(app: FastAPI):
         await setup_database()
         yield
 ```
+
+`install_excepthook` also reports an exception that ends a thread, as
+`SYS_UNHANDLED_EXCEPTION` with its `exception_type`. The process keeps running,
+so it is not a crash.
 
 `lifespan_logging` is a composable context manager rather than something you
 pass to `FastAPI(lifespan=...)`, so it sits alongside whatever else the
