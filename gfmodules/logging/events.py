@@ -14,6 +14,7 @@ from typing import Any, ClassVar, Self
 from gfmodules.logging.context import ContextField, always_kept_field_names, registered_field_names
 from gfmodules.logging.loggers import report_outside_root, within_root
 from gfmodules.logging.streams import LoggingStreams
+from gfmodules.logging.strict import strict_fields
 
 #: Spelled out rather than read off the running interpreter
 #: stdblib differs across Python versions, and we want a stable set of reserved names.
@@ -144,18 +145,6 @@ def _excused_events(access_logs: bool) -> frozenset[str]:
     return frozenset() if access_logs else _ACCESS_EVENTS
 
 
-_strict_fields = False
-
-
-def set_strict_fields(enabled: bool) -> None:
-    """Make :func:`emit` reject fields no declared stream will carry.
-
-    Off by default: a typo should not take a request down in production.
-    """
-    global _strict_fields
-    _strict_fields = enabled
-
-
 def unrouted_fields(event: LogEvent, names: Iterable[str]) -> tuple[str, ...]:
     if not event.fields:
         return ()
@@ -186,10 +175,10 @@ def emit(
     if context_fields:
         raise ValueError(
             f"event {event.event_id} names fields the request context already binds: {', '.join(context_fields)}. "
-            "Context reaches every record on its own; bind or update it instead of passing these through fields."
+            "Context reaches every record on its own; bind or set it instead of passing these through fields."
         )
 
-    if _strict_fields:
+    if strict_fields():
         unrouted = unrouted_fields(event, values)
         if unrouted:
             raise ValueError(f"event {event.event_id} routes none of these fields to any stream: {', '.join(unrouted)}")

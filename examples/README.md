@@ -12,10 +12,10 @@ Read it in this order:
 
 | file | what it shows |
 | --- | --- |
-| [fastapi_app/events.py](fastapi_app/events.py) | the event catalogue: required slots, the application's own events, per-stream field allow-lists, an alias, per-route access ids |
+| [fastapi_app/events.py](fastapi_app/events.py) | the event catalogue: required slots, the application's own events, per-stream field allow-lists, an alias, per-route access ids, declared context fields |
 | [fastapi_app/events.md](fastapi_app/events.md) | the overview generated from that catalogue, the file a team and its SIEM side diff |
 | [fastapi_app/config.py](fastapi_app/config.py) | `ConfigLogging` composed into the application's own settings |
-| [fastapi_app/app.py](fastapi_app/app.py) | the whole integration: `configure()`, the middleware, the lifespan, the exception handler |
+| [fastapi_app/app.py](fastapi_app/app.py) | the whole integration: `configure()`, the middleware, the lifespan, the exception handler, a dependency that adds the caller with `set_context` |
 | [fastapi_app/service.py](fastapi_app/service.py) | ordinary domain code that logs, and the `stacklevel` idiom for a wrapper |
 | [fastapi_app/test_logging.py](fastapi_app/test_logging.py) | the tests an application should have about its own logging |
 | [fastapi_app/conftest.py](fastapi_app/conftest.py) | the fixtures those tests need |
@@ -55,6 +55,12 @@ Four things have to happen, in this order:
 After that, call sites just log: `gflog.emit(logger, Log.SOMETHING, "message",
 fields={"field": "value"})`. The request id, client ip, endpoint, method and
 correlation metadata are attached for you.
+
+In the example, the `identify_caller` dependency adds `caller_id` with
+`set_context`. `events.py` declares `caller_id` as a context field and
+allow-lists it on the access and unhandled exception events. See
+[docs/STARTING_GUIDE.md](../docs/STARTING_GUIDE.md#3-add-the-middleware) for
+how `set_context` works.
 
 ## The part worth copying most carefully
 

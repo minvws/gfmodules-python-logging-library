@@ -19,6 +19,7 @@ from gfmodules.logging.testing import (
 )
 
 RESOURCE: dict[str, Any] = {"resource_id": "r-1", "owner_id": "o-1", "created_by": "u-1"}
+CALLER = {"Authorization": "Bearer token-1"}
 
 
 class TestCatalogue:
@@ -50,6 +51,32 @@ class TestRequestContext:
             client.post("/resources", json=RESOURCE)
 
         assert [entry for entry in captured if entry.event_id == "100710"]
+
+
+class TestCaller:
+    def test_the_caller_reaches_the_access_record(self) -> None:
+        with capture_stream(LoggingStreams.APP) as app_stream, TestClient(create_app()) as client:
+            client.post("/resources", json=RESOURCE, headers=CALLER)
+
+        access = next(message for message in app_stream if message.get("status_code") == 201)
+        assert access["caller_id"] == "caller-1"
+
+    def test_the_caller_reaches_the_unhandled_exception_record(self) -> None:
+        with (
+            capture_stream(LoggingStreams.APP) as app_stream,
+            TestClient(create_app(), raise_server_exceptions=False) as client,
+        ):
+            client.get("/boom", headers=CALLER)
+
+        crash = next(message for message in app_stream if message.get("exception_type") == "RuntimeError")
+        assert crash["caller_id"] == "caller-1"
+
+    def test_an_anonymous_request_carries_no_caller(self) -> None:
+        with capture_stream(LoggingStreams.APP) as app_stream, TestClient(create_app()) as client:
+            client.post("/resources", json=RESOURCE)
+
+        access = next(message for message in app_stream if message.get("status_code") == 201)
+        assert "caller_id" not in access
 
 
 class TestScope:

@@ -16,8 +16,11 @@ Base = DefaultEventCatalogue
 
 
 class Log(Base):
-    # Declaring the field is what makes the header survive to the record.
-    context_fields = (ContextField(name="tenant_id", header="X-Tenant-Id"),)
+    # Declaring a field is what makes its value survive to the record.
+    context_fields = (
+        ContextField(name="tenant_id", header="X-Tenant-Id"),
+        ContextField(name="caller_id", header=None),
+    )
 
     # The system events: this system's ids, the library's routing. Leaving one
     # out fails in configure(), naming the slot.
@@ -26,7 +29,7 @@ class Log(Base):
     # No dedicated id for a crash, so it shares the stopped one. They are told
     # apart by level and by shutdown_reason.
     SYS_APP_CRASHED = Base.SYS_APP_CRASHED.with_id("100602")
-    SYS_UNHANDLED_EXCEPTION = Base.SYS_UNHANDLED_EXCEPTION.with_id("100604")
+    SYS_UNHANDLED_EXCEPTION = Base.SYS_UNHANDLED_EXCEPTION.with_id("100604").add_fields({APP: ("caller_id",)})
 
     # replace() where more than the id differs: this application reports a
     # missing correlation id to SIEM as well.
@@ -54,6 +57,8 @@ class Log(Base):
 
     # A slot may alias another event where the trigger has no dedicated id.
     LOOKUP_MALFORMED = LOOKUP_REJECTED
+
+    ACCESS_REQUEST = Base.ACCESS_REQUEST.add_fields({APP: ("caller_id",)})
 
     access_event_id: ClassVar[Mapping[tuple[str, str], str]] = {
         ("POST", "/resources"): "100710",

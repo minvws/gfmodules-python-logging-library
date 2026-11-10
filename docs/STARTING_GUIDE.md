@@ -280,6 +280,37 @@ Every event logged while a request is being handled picks up the request id,
 client ip, user agent, endpoint, method and correlation metadata automatically,
 so call sites never pass them explicitly.
 
+Use `set_context` to add values that are resolved during request handling, such
+as the authenticated user's ID. Call it from the endpoint, a dependency, or any
+code they call:
+
+```python
+from gfmodules.logging import set_context
+
+set_context({"user_id": user.id})
+```
+
+The value stays in context for the rest of the request, including after the
+endpoint finishes. It is available to the access record, the unhandled
+exception record, and any records an exception handler writes for a refused or
+invalid request.
+
+`set_context` rejects fields managed by the middleware, such as `request_id`.
+It does nothing when no context is bound, as in a WebSocket route. Outside a
+request, it updates the innermost active `bind_context` block, and the value
+lasts until that block ends.
+
+As with any context value, the field must be declared in the catalogue's
+`context_fields` to appear in a record. With `strict_fields` enabled,
+undeclared fields are rejected, so tests catch misspelled names instead of
+letting their values disappear silently.
+
+When moving a field into context, remove it from every `emit` call that passes
+it in `fields`: `emit` rejects context field names there. Code that also runs
+outside a request, such as a worker or a test that calls a service directly,
+must bind the field itself with `bind_context`. Without a bound context,
+`set_context` has nothing to update.
+
 **Access records need this middleware, not just `configure()`.** `access_logs`
 defaults to `True` in `ConfigLogging`, but that only decides whether *this*
 middleware logs a record per request once it is in place, adding the
@@ -394,18 +425,13 @@ def log_rejected_request(logger, reason, fields=None):
 ## 6. Bind context outside a request
 
 The middleware is not the only way in. `bind_context` attaches context to
-anything logged inside the block, which is what a worker or a CLI needs, and
-`update_context` adds to what is already bound without replacing it:
+anything logged inside the block, which is what a worker or a CLI needs:
 
 ```python
-from gfmodules.logging import bind_context, update_context
+from gfmodules.logging import bind_context
 
 with bind_context({"correlation_id": message.correlation_id}):
     handle(message)          # everything logged in here carries it
-
-# inside a request, once authentication resolves the subject
-with update_context({"tenant_id": subject.tenant}):
-    ...
 ```
 
 A field only survives to the record if it was declared, either as a standard

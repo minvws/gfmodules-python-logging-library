@@ -12,6 +12,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+from gfmodules.logging.strict import strict_fields
+
 _logger = logging.getLogger(__name__)
 
 UNSET = "-"
@@ -72,8 +74,11 @@ STANDARD_FIELDS: tuple[ContextField, ...] = (
     SCOPE,
 )
 
+_STANDARD_FIELD_NAMES = frozenset(field.name for field in STANDARD_FIELDS)
+
 _fields: tuple[ContextField, ...] = STANDARD_FIELDS
-_context_var: ContextVar[Mapping[str, str] | None] = ContextVar("gfmodules_logging_context", default=None)
+_context_var: ContextVar[dict[str, Any] | None] = ContextVar("gfmodules_logging_context", default=None)
+_request_var: ContextVar[dict[str, Any] | None] = ContextVar("gfmodules_logging_request_context", default=None)
 
 
 def register_context_fields(extra: Sequence[ContextField]) -> None:
@@ -118,24 +123,36 @@ def extract_context(headers: Mapping[str, str]) -> dict[str, str]:
 
 
 @contextmanager
-def bind_context(values: Mapping[str, Any]) -> Generator[None]:
-    token = _context_var.set(dict(values))
+def _bound(var: ContextVar[dict[str, Any] | None], values: dict[str, Any]) -> Generator[None]:
+    token = var.set(values)
     try:
         yield
     finally:
-        _context_var.reset(token)
+        var.reset(token)
 
 
 @contextmanager
-def update_context(values: Mapping[str, Any]) -> Generator[None]:
-    """Adds to the bound context instead of replacing it.
-
-    The field still has to be declared in the catalogue's ``context_fields``,
-    or nothing collects it.
-    """
-    context_mapping = _context_var.get() or {}
-    with bind_context({**context_mapping, **values}):
+def bind_context(values: Mapping[str, Any]) -> Generator[None]:
+    with _bound(_context_var, dict(values)):
         yield
+
+
+@contextmanager
+def bind_request_values(values: dict[str, str]) -> Generator[None]:
+    with _bound(_request_var, values), _bound(_context_var, values):
+        yield
+
+
+def set_context(values: Mapping[str, str]) -> None:
+    standard = sorted(_STANDARD_FIELD_NAMES & values.keys())
+    if standard:
+        raise ValueError(f"set_context() cannot change the fields the middleware sets: {', '.join(standard)}")
+    undeclared = sorted(values.keys() - registered_field_names()) if strict_fields() else []
+    if undeclared:
+        raise ValueError(f"set_context() names fields no catalogue declares: {', '.join(undeclared)}")
+    for bound in (_request_var.get(), _context_var.get()):
+        if bound is not None:
+            bound.update(values)
 
 
 def collect_context() -> dict[str, str]:
