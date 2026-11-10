@@ -238,6 +238,11 @@ ConfigLogging(syslog_path="log-server:5514", console_streams=[])       # silence
 An empty list silences stdout, leaving Python's own WARNING-and-above handler
 on stderr. Silencing stdout with no `syslog_path` set leaves no handlers at all.
 
+Control characters in the message and in field values are escaped, so a newline
+shows as `\n` and every record stays on one line. A traceback follows on its own
+lines, each indented by two spaces, so no value or exception message can start a
+line that passes for a log line.
+
 ### What reaches the log server
 
 Each selected stream goes to the log server as JSON over the shared syslog
@@ -251,6 +256,9 @@ ConfigLogging(syslog_path="log-server:5514", syslog_streams=["app", "siem", "pub
 ```
 
 `include_traces=False` keeps tracebacks out of the debug stream as well.
+
+Control characters in `event_description` are escaped as on the console, so an
+injection attempt arrives as a visible `\n` rather than vanishing.
 
 `configure()` builds its dict config through `LogConfigBuilder`, which is
 exported for an application that needs to inspect or extend it.

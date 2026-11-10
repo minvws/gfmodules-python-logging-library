@@ -7,6 +7,7 @@ the formatted string itself rather than the parsed structure.
 import json
 import logging
 import re
+from types import TracebackType
 from typing import Any
 
 import pytest
@@ -93,6 +94,26 @@ TRACEBACK = (
     '    raise ValueError("boom")\n'
     "ValueError: boom"
 )
+
+PLAIN_TRACEBACK = (
+    "  Traceback (most recent call last):\n"
+    "    File <frame>, line 0, in <frame>\n"
+    '      raise ValueError("boom")\n'
+    "  ValueError: boom"
+)
+
+FORGED_LINE = "2026-04-12T13:20:00Z [siem] CRITICAL app.auth [100900] forged"
+
+UNICODE_LINE_BREAKS = "a\x85b\u2028c\u2029d"
+ESCAPED_UNICODE_LINE_BREAKS = "a\\x85b\\u2028c\\u2029d"
+
+
+def raised(message: str) -> tuple[type[BaseException], BaseException, TracebackType | None]:
+    try:
+        raise ValueError(message)
+    except ValueError as exc:
+        return type(exc), exc, exc.__traceback__
+
 
 UNROUTED_MESSAGE: dict[str, Any] = {
     "request_id": "req-1",
@@ -222,7 +243,7 @@ PLAIN_APP_LINE_WITH_TAG = (
 
 PLAIN_CASES: dict[str, tuple[PlainTextFormatter, dict[str, Any], str]] = {
     "unrouted": (PlainTextFormatter(), {}, PLAIN_LINE),
-    "with_exc": (PlainTextFormatter(), {"with_exc": True}, f"{PLAIN_LINE}\n{TRACEBACK}"),
+    "with_exc": (PlainTextFormatter(), {"with_exc": True}, f"{PLAIN_LINE}\n{PLAIN_TRACEBACK}"),
     "app_stream": (PlainTextFormatter(stream=LoggingStreams.APP, stream_id="app"), {}, PLAIN_APP_LINE_WITH_TAG),
 }
 
@@ -290,14 +311,76 @@ class TestStreamRouting:
 
 
 class TestMessageSanitisation:
-    def test_control_characters_are_stripped_from_the_description(self) -> None:
+    def test_control_characters_are_escaped_in_the_description(self) -> None:
         record = make_record()
         record.msg = "line\x00one\x1fbreak\x7f"
         record.args = ()
 
         out = json.loads(JsonFormatter(include_traces=False).format(record))
 
-        assert out["event_description"] == "lineonebreak"
+        assert out["event_description"] == "line\\x00one\\x1fbreak\\x7f"
+
+    def test_unicode_line_breaks_are_escaped_in_the_description(self) -> None:
+        record = make_record()
+        record.msg = UNICODE_LINE_BREAKS
+        record.args = ()
+
+        out = json.loads(JsonFormatter(include_traces=False).format(record))
+
+        assert out["event_description"] == ESCAPED_UNICODE_LINE_BREAKS
+
+    def test_plain_output_escapes_unicode_line_breaks_in_field_values(self) -> None:
+        record = make_record(with_field_streams=False)
+        record.error_detail = UNICODE_LINE_BREAKS
+
+        out = PlainTextFormatter(include_traces=False).format(record)
+
+        assert len(out.splitlines()) == 1
+        assert f"error_detail={ESCAPED_UNICODE_LINE_BREAKS} " in out
+
+    def test_plain_traceback_escapes_unicode_line_breaks(self) -> None:
+        record = make_record()
+        record.exc_info = raised(UNICODE_LINE_BREAKS)
+
+        out = PlainTextFormatter().format(record)
+
+        assert out.endswith(f"\n  ValueError: {ESCAPED_UNICODE_LINE_BREAKS}")
+
+    def test_plain_output_escapes_control_characters_in_the_message(self) -> None:
+        record = make_record()
+        record.msg = "line\x00one\nbreak\x7f"
+        record.args = ()
+
+        out = PlainTextFormatter(include_traces=False).format(record)
+
+        assert "\n" not in out
+        assert "[100600] line\\x00one\\nbreak\\x7f " in out
+
+    def test_plain_output_escapes_control_characters_in_field_values(self) -> None:
+        record = make_record(with_field_streams=False)
+        record.error_detail = f"refused\n{FORGED_LINE}"
+
+        out = PlainTextFormatter(include_traces=False).format(record)
+
+        assert "\n" not in out
+        assert f"error_detail=refused\\n{FORGED_LINE}" in out
+
+    def test_plain_traceback_lines_are_indented_so_none_can_pass_for_a_log_line(self) -> None:
+        record = make_record()
+        record.exc_info = raised(f"refused\n{FORGED_LINE}")
+
+        _, *trace_lines = PlainTextFormatter().format(record).splitlines()
+
+        assert trace_lines[-2:] == ["  ValueError: refused", f"  {FORGED_LINE}"]
+        assert all(line.startswith("  ") for line in trace_lines)
+
+    def test_plain_traceback_escapes_control_characters_other_than_newlines(self) -> None:
+        record = make_record()
+        record.exc_info = raised("refused\r\x1b[2Kforged")
+
+        out = PlainTextFormatter().format(record)
+
+        assert out.endswith("  ValueError: refused\\r\\x1b[2Kforged")
 
     def test_records_without_an_event_id_report_none(self) -> None:
         record = make_record()
@@ -327,7 +410,7 @@ class TestTraceInclusion:
         assert out["message"]["stack_info"].startswith("Stack (most recent call last):")
 
     def test_plain_output_keeps_the_traceback_by_default(self) -> None:
-        assert format_case(PlainTextFormatter(), with_exc=True) == f"{PLAIN_LINE}\n{TRACEBACK}"
+        assert format_case(PlainTextFormatter(), with_exc=True) == f"{PLAIN_LINE}\n{PLAIN_TRACEBACK}"
 
     def test_plain_output_omits_the_traceback_when_traces_are_disabled(self) -> None:
         assert format_case(PlainTextFormatter(include_traces=False), with_exc=True) == PLAIN_LINE
