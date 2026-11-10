@@ -56,11 +56,11 @@ After that, call sites just log: `gflog.emit(logger, Log.SOMETHING, "message",
 fields={"field": "value"})`. The request id, client ip, endpoint, method and
 correlation metadata are attached for you.
 
-A value the request only learns while it runs, such as the caller that
-`identify_caller` resolves in the example, goes in with `set_context`. It stays
-for the rest of the request, so it also reaches the access record and the
-unhandled exception record, provided the catalogue declares the field and the
-events allow-list it.
+In the example, the `identify_caller` dependency adds `caller_id` with
+`set_context`. `events.py` declares `caller_id` as a context field and
+allow-lists it on the access and unhandled exception events. See
+[docs/STARTING_GUIDE.md](../docs/STARTING_GUIDE.md#3-add-the-middleware) for
+how `set_context` works.
 
 ## The part worth copying most carefully
 
